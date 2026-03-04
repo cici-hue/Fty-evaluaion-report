@@ -1,8 +1,5 @@
 import streamlit as st
 import pandas as pd
-# 可选：如果仍有依赖问题，先注释 plotly 相关导入
-import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, date
 import json
 import os
@@ -24,16 +21,17 @@ DB_FILE = os.path.join(DATA_DIR, "evaluations.db")
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
-# ==================== 数据模型 ====================
+# ==================== 177分评分体系数据模型 ====================
 class DataStore:
-    """数据存储管理类"""
+    """数据存储管理类（整合177分评分体系）"""
     
     def __init__(self):
         self.users = self._init_users()
         self.factories = self._init_factories()
-        self.modules = self._init_modules()
+        self.modules = self._init_177_modules()  # 使用177分评分体系
         self.evaluations = self._load_evaluations()
         self.scores = self._load_scores()
+        self.total_system_score = 177  # 总分177分
     
     def _init_users(self):
         """初始化用户数据"""
@@ -52,99 +50,406 @@ class DataStore:
             {"id": 5, "name": "珠海XX制衣", "contact": "陈经理", "phone": "13800138004"},
         ]
     
-    def _init_modules(self):
-        """初始化8大评估模块及小项"""
+    def _init_177_modules(self):
+        """初始化177分完整评分体系（8大项+所有小项）"""
         return {
-            "纸样": {
+            # 第一大项：纸样、样衣制作（总分：14分）
+            "纸样、样衣制作": {
+                "total_score": 14,
                 "items": [
-                    {"id": "paper_1", "name": "纸样尺寸准确，符合设计要求", "type": "重点", "score": 3,
-                     "detail": ["尺寸偏差>3mm", "尺寸偏差>5mm"], "comment": "纸样是生产的基础，尺寸偏差会影响成衣质量"},
-                    {"id": "paper_2", "name": "纸样缝份标注清晰完整", "type": "非重点", "score": 1,
-                     "detail": ["缝份未标注", "缝份标注错误"], "comment": "缝份标注不清会导致车缝错误"},
-                    {"id": "paper_3", "name": "纸样保存完好，无破损变形", "type": "非重点", "score": 1,
-                     "detail": ["纸样破损", "纸样变形"], "comment": "纸样损坏会导致批量生产问题"},
+                    # 小项1. 纸样开发标准（6分）
+                    {"id": "p1_1", "name": "使用CAD软件制作/修改纸样", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    {"id": "p1_2", "name": "缝份清晰标记应合规", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    {"id": "p1_3", "name": "布纹线，剪口标注合规并清晰", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    {"id": "p1_4", "name": "放码标准（尺寸增量）遵守客户要求，并文档化", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    {"id": "p1_5", "name": "技术包（Tech Pack）应明确标注尺寸表、工艺说明与要求，及特殊工艺说明（尤其是特殊面料或设计）", "type": "重点", "score": 3,
+                     "detail": [], "comment": "", "unqualified": []},
+                    
+                    # 小项2. 版本控制与追溯性（3分）
+                    {"id": "p2_1", "name": "纸样版本控制系统（确保最新、准确、可追溯）", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    {"id": "p2_2", "name": "文档记录：纸样历史、修订、批准", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    {"id": "p2_3", "name": "物理纸样（平放/悬挂）及数字备份的安全存储", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    
+                    # 小项3. 初版审核与文档化（5分）
+                    {"id": "p3_1", "name": "尺寸与工艺审核，应符合技术包要求（检验记录）", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    {"id": "p3_2", "name": "面辅料核对，并按要求进行功能性检测（检验记录）", "type": "重点", "score": 3,
+                     "detail": [], "comment": "", "unqualified": []},
                 ]
             },
-            "样衣制作": {
-                "items": [
-                    {"id": "sample_1", "name": "样衣尺寸符合纸样要求", "type": "重点", "score": 3,
-                     "detail": ["尺寸偏差>5mm", "尺寸偏差>10mm"], "comment": "样衣尺寸偏差会影响大货生产"},
-                    {"id": "sample_2", "name": "样衣工艺符合设计要求", "type": "重点", "score": 3,
-                     "detail": ["工艺偏差", "工艺错误"], "comment": "样衣工艺是大货生产的标准"},
-                    {"id": "sample_3", "name": "样衣面料使用正确", "type": "非重点", "score": 1,
-                     "detail": ["面料错误", "面料代用"], "comment": "面料错误会导致成本和质量问题"},
-                ]
-            },
+            
+            # 第二大项：面辅料品质控制（总分：34分）
             "面辅料品质控制": {
+                "total_score": 34,
                 "items": [
-                    {"id": "material_1", "name": "面辅料检验报告完整", "type": "重点", "score": 3,
-                     "detail": ["检验报告缺失", "检验报告不全"], "comment": "检验报告是质量控制的重要依据"},
-                    {"id": "material_2", "name": "面辅料规格符合标准", "type": "重点", "score": 3,
-                     "detail": ["规格不符", "规格偏差"], "comment": "规格不符会导致生产问题"},
-                    {"id": "material_3", "name": "面辅料色号、缸号标识清晰", "type": "非重点", "score": 1,
-                     "detail": ["标识不清", "标识错误"], "comment": "标识不清会导致混用"},
-                    {"id": "material_4", "name": "温湿度计及记录 (湿度<65%)", "type": "非重点", "score": 1,
-                     "detail": ["温湿度记录缺失", "湿度超标"], "comment": "监控湿度的变化，便于采取相应的解决方案（如抽湿）"},
+                    # 小项1. 面料仓库检查（5分）
+                    {"id": "m1_1", "name": "合格/不合格品/待检标识应明确，分开堆放", "type": "非重点", "score": 1,
+                     "detail": ["标识不明确", "未分开堆放"], "comment": "", "unqualified": ["标识不明确", "未分开堆放"]},
+                    {"id": "m1_2", "name": "面料不可“井”字堆放，高度不可过高（建议<1.5m）（针织面料除外）", "type": "非重点", "score": 1,
+                     "detail": ["面料井字堆放", "堆放高度过高"], "comment": "", "unqualified": ["面料井字堆放", "堆放高度过高"]},
+                    {"id": "m1_3", "name": "不同颜色及批次（缸号）分开堆放", "type": "非重点", "score": 1,
+                     "detail": [], "comment": "", "unqualified": []},
+                    {"id": "m1_4", "name": "托盘存放不靠墙、不靠窗、避光储存及防潮防霉", "type": "非重点", "score": 1,
+                     "detail": ["靠墙", "靠窗", "未避光储存", "未防潮防霉"], "comment": "", "unqualified": ["靠墙", "靠窗", "未避光储存", "未防潮防霉"]},
+                    {"id": "m1_5", "name": "温湿度计及记录（湿度<65%）", "type": "非重点", "score": 1,
+                     "detail": ["无温湿度计", "无记录", "湿度超标"], "comment": "监控湿度的变化，便于采取相应的解决方案（如抽湿）", "unqualified": []},
+                    
+                    # 小项2. 面料入库记录（2分）
+                    {"id": "m2_1", "name": "面料厂验布记录/测试记录/缸差布", "type": "非重点", "score": 1,
+                     "detail": ["无验布记录", "无测试记录", "无缸差布"], "comment": "测试记录和缸差布可预防面料品质问题和色差问题", "unqualified": ["无验布记录", "无测试记录", "无缸差布"]},
+                    {"id": "m2_2", "name": "入库单（卷数，米数，克重等）", "type": "非重点", "score": 1,
+                     "detail": ["无入库单", "信息不全"], "comment": "", "unqualified": []},
+                    
+                    # 小项3. 面料检验（织成试样检验）（5分）
+                    {"id": "m3_1", "name": "四分制验布及现场演示", "type": "非重点", "score": 1,
+                     "detail": ["无记录", "现场工人操作不规范"], "comment": "", "unqualified": ["无记录", "现场工人操作不规范"]},
+                    {"id": "m3_2", "name": "500m以下全检，500m以上至少抽检10%（覆盖每缸）", "type": "重点", "score": 3,
+                     "detail": ["500m以下未全检", "500m以上抽检不足10%"], "comment": "", "unqualified": ["500m以下未全检", "500m以上抽检不足10%"]},
+                    {"id": "m3_3", "name": "核对面料厂缸差布和大货面料（颜色D65，克重，防静电）", "type": "非重点", "score": 1,
+                     "detail": ["颜色不匹配", "克重差异", "无防静电检测"], "comment": "缸差核对要在灯箱里进行，灯光要用D65光源", "unqualified": []},
+                    
+                    # 小项4. 面料测试（1分）
+                    {"id": "m4_1", "name": "每缸测试记录（如水洗色牢度，干湿色牢度，PH值）", "type": "非重点", "score": 1,
+                     "detail": ["无测试记录", "记录不全"], "comment": "可以控制大货的色牢度，沾色等问题", "unqualified": []},
+                    
+                    # 小项5. 预缩记录和结果（6分）
+                    {"id": "m5_1", "name": "面料缩率要求 ≤ 3%（水洗针织款除外）", "type": "重点", "score": 3,
+                     "detail": ["缩率>3%"], "comment": "面料缩率大于3%时，成衣工厂的尺寸控制难度较大", "unqualified": []},
+                    {"id": "m5_2", "name": "每缸缩率记录", "type": "重点", "score": 3,
+                     "detail": ["无缩率记录", "记录不全"], "comment": "每缸缩率测试可以更好的控制大货成衣尺寸（纸版可以进行放缩率）", "unqualified": []},
+                    
+                    # 小项6. 面料出库记录及盘点记录（3分）
+                    {"id": "m6_1", "name": "出库记录含款号，缸号，米数，色号，时间，领料人等信息", "type": "非重点", "score": 1,
+                     "detail": ["信息不全", "无出库记录"], "comment": "", "unqualified": []},
+                    {"id": "m6_2", "name": "盘点记录", "type": "非重点", "score": 1,
+                     "detail": ["无盘点记录", "记录不全"], "comment": "", "unqualified": []},
+                    {"id": "m6_3", "name": "库存1年以上面料不可使用", "type": "非重点", "score": 1,
+                     "detail": ["使用库存1年以上面料"], "comment": "盘点一年以上的库存面料禁止使用（成衣撕裂牢度等会受影响）", "unqualified": []},
+                    
+                    # 小项7. 辅料仓库检查（2分）
+                    {"id": "m7_1", "name": "辅料存放标识明确（订单/款号/色号，分类堆放）", "type": "非重点", "score": 1,
+                     "detail": ["订单/款号/色号标识不清晰", "分类堆放标识不清晰"], "comment": "以防辅料发放错款", "unqualified": ["订单/款号/色号标识不清晰", "分类堆放标识不清晰"]},
+                    {"id": "m7_2", "name": "辅料入库记录（品类，数量）", "type": "非重点", "score": 1,
+                     "detail": ["无品类记录", "无数量记录"], "comment": "", "unqualified": ["无品类记录", "无数量记录"]},
+                    
+                    # 小项8. 辅料检验（1分）
+                    {"id": "m8_1", "name": "正确辅料卡核对（型号，颜色，功能，内容，外观）", "type": "非重点", "score": 1,
+                     "detail": ["无型号", "无颜色", "无功能", "无内容", "无外观"], "comment": "", "unqualified": ["无型号", "无颜色", "无功能", "无内容", "无外观"]},
+                    
+                    # 小项9. 辅料测试（3分）
+                    {"id": "m9_1", "name": "织带，橡筋，拉链，绳子的预缩测试（水洗缩，烫蒸缩）", "type": "重点", "score": 3,
+                     "detail": ["无预缩测试", "测试记录不全"], "comment": "预防做到衣服上起皱，起浪等问题", "unqualified": []},
+                    
+                    # 小项10. 辅料出库记录及盘点记录（3分）
+                    {"id": "m10_1", "name": "出库记录含款号，数量，色号，时间，领料人等信息", "type": "非重点", "score": 1,
+                     "detail": ["信息不全", "无出库记录"], "comment": "", "unqualified": []},
+                    {"id": "m10_2", "name": "盘点记录", "type": "非重点", "score": 1,
+                     "detail": ["无盘点记录", "记录不全"], "comment": "", "unqualified": []},
+                    {"id": "m10_3", "name": "库存记录（保留至少1年）", "type": "非重点", "score": 1,
+                     "detail": ["无库存记录", "记录保留不足1年"], "comment": "", "unqualified": []},
                 ]
             },
+            
+            # 第三大项：产前会议控制（总分：21分）
             "产前会议控制": {
+                "total_score": 21,
                 "items": [
-                    {"id": "pre_meeting_1", "name": "产前会议记录完整", "type": "重点", "score": 3,
-                     "detail": ["会议记录缺失", "会议记录不全"], "comment": "产前会议是解决生产问题的关键"},
-                    {"id": "pre_meeting_2", "name": "生产技术要求明确传达", "type": "重点", "score": 3,
-                     "detail": ["要求未传达", "传达不清"], "comment": "技术要求未传达会导致批量质量问题"},
-                    {"id": "pre_meeting_3", "name": "质量问题解决方案确认", "type": "非重点", "score": 1,
-                     "detail": ["方案未确认", "方案不完整"], "comment": "质量问题的解决方案必须明确"},
+                    # 小项1. 参会人员（6分）
+                    {"id": "pre1_1", "name": "技术部", "type": "非重点", "score": 1,
+                     "detail": ["技术部未参会"], "comment": "技术部对前期开发比较了解，可以规避打样时发生的问题，更好的控制大货品质", "unqualified": []},
+                    {"id": "pre1_2", "name": "质检部", "type": "非重点", "score": 1,
+                     "detail": ["质检部未参会"], "comment": "质量部门要跟进技术部提出的问题点及大货品质", "unqualified": []},
+                    {"id": "pre1_3", "name": "业务部", "type": "非重点", "score": 1,
+                     "detail": ["业务部未参会"], "comment": "业务部门告知面辅料情况及订单进度", "unqualified": []},
+                    {"id": "pre1_4", "name": "生产部（裁剪，生产主管，生产组长）", "type": "非重点", "score": 1,
+                     "detail": ["无裁剪", "无生产主管", "无生产组长"], "comment": "", "unqualified": ["无裁剪", "无生产主管", "无生产组长"]},
+                    {"id": "pre1_5", "name": "后道（后道主管）", "type": "非重点", "score": 1,
+                     "detail": ["后道主管未参会"], "comment": "", "unqualified": []},
+                    {"id": "pre1_6", "name": "二次加工产品（印花/绣花/水洗/烫钻等）各工序负责人必须参会", "type": "非重点", "score": 1,
+                     "detail": ["二次加工负责人未参会"], "comment": "二次加工负责人主要时了解二次加工的产品如何控制品质", "unqualified": []},
+                    
+                    # 小项2. 工艺标准传达及预防措施（10分）
+                    {"id": "pre2_1", "name": "客户确认样", "type": "非重点", "score": 1,
+                     "detail": ["无客户确认样"], "comment": "", "unqualified": []},
+                    {"id": "pre2_2", "name": "确认意见，明确客户要求", "type": "非重点", "score": 1,
+                     "detail": ["无确认意见", "客户要求不明确"], "comment": "", "unqualified": []},
+                    {"id": "pre2_3", "name": "试生产样（客户确认码，最小码及最大码）和封样", "type": "重点", "score": 3,
+                     "detail": ["无客户确认码", "无最大码", "无最小码", "无封样"], "comment": "做最小码和最大码衣服，可提前预知大货可能出现的问题", "unqualified": ["无客户确认码", "无最大码", "无最小码", "无封样"]},
+                    {"id": "pre2_4a", "name": "工艺单需覆盖：重点工序难点（制作领子，门襟等小样）及解决方案", "type": "非重点", "score": 1,
+                     "detail": ["无重点工序难点说明", "无解决方案"], "comment": "给车间生产员工一个质量标准参照", "unqualified": []},
+                    {"id": "pre2_4b", "name": "工艺单需覆盖：试生产样的外观/尺寸/克重/试身的问题及解决方案", "type": "非重点", "score": 1,
+                     "detail": ["无试生产样问题记录", "无解决方案"], "comment": "", "unqualified": []},
+                    {"id": "pre2_4c", "name": "工艺单需覆盖：对条对格，花型定位等要求", "type": "非重点", "score": 1,
+                     "detail": ["无对条对格要求", "无花型定位要求"], "comment": "", "unqualified": []},
+                    {"id": "pre2_4d", "name": "工艺单需覆盖：特别关注撕裂强度的缝制工艺的风险", "type": "非重点", "score": 1,
+                     "detail": ["无撕裂强度风险关注"], "comment": "", "unqualified": []},
+                    {"id": "pre2_4e", "name": "工艺单需覆盖：特别关注粘衬环节的风险（颜色差异，透胶，粘衬颜色）", "type": "非重点", "score": 1,
+                     "detail": ["无粘衬环节风险关注"], "comment": "", "unqualified": []},
+                    {"id": "pre2_4f", "name": "工艺单需覆盖：轻薄产品包装方法风险评估（皱，滑落等）", "type": "非重点", "score": 1,
+                     "detail": ["无轻薄产品包装风险评估"], "comment": "", "unqualified": []},
+                    
+                    # 小项3. 技术难点分析（2分）
+                    {"id": "pre3_1", "name": "提出相应的改进建议", "type": "非重点", "score": 1,
+                     "detail": ["无改进建议"], "comment": "", "unqualified": []},
+                    {"id": "pre3_2", "name": "明确跟进人员及负责人", "type": "非重点", "score": 1,
+                     "detail": ["无跟进人员", "无负责人"], "comment": "", "unqualified": []},
+                    
+                    # 小项4. 会议记录执行（2分）
+                    {"id": "pre4_1", "name": "会议记录完整，参会人员签字确认", "type": "非重点", "score": 1,
+                     "detail": ["记录不完整", "无签字确认"], "comment": "", "unqualified": []},
+                    {"id": "pre4_2", "name": "会议记录随工艺单确认样一起流转至生产各部门", "type": "非重点", "score": 1,
+                     "detail": ["未流转至生产部门"], "comment": "", "unqualified": []},
                 ]
             },
+            
+            # 第四大项：裁剪品质控制（总分：30分）
             "裁剪品质控制": {
+                "total_score": 30,
                 "items": [
-                    {"id": "cut_1", "name": "裁片尺寸符合纸样要求", "type": "重点", "score": 3,
-                     "detail": ["尺寸偏差>3mm", "尺寸偏差>5mm"], "comment": "裁片尺寸偏差会影响缝制质量"},
-                    {"id": "cut_2", "name": "裁片层次对齐整齐", "type": "重点", "score": 3,
-                     "detail": ["层次不对齐", "裁片歪斜"], "comment": "层次不对齐会导致成衣左右不对称"},
-                    {"id": "cut_3", "name": "裁片编号标识清晰", "type": "非重点", "score": 1,
-                     "detail": ["编号不清", "编号错误"], "comment": "编号不清会导致混淆"},
+                    # 小项1. 面料松布（4分）
+                    {"id": "cut1_1", "name": "面料不可捆扎", "type": "非重点", "score": 1,
+                     "detail": ["面料捆扎"], "comment": "放缩后困扎面料，会影响面料的回缩", "unqualified": []},
+                    {"id": "cut1_2", "name": "面料不可多卷混放", "type": "非重点", "score": 1,
+                     "detail": ["多卷混放"], "comment": "多卷放在一起，会影响压在下方面料的回缩，敏感面料会产生压痕", "unqualified": []},
+                    {"id": "cut1_3", "name": "面料不可落地摆放", "type": "非重点", "score": 1,
+                     "detail": ["面料落地"], "comment": "预防脏污，潮湿等问题", "unqualified": []},
+                    {"id": "cut1_4", "name": "现场标识清晰（订单号，缸号/卷号，开始及结束时间）", "type": "重点", "score": 3,
+                     "detail": ["订单号标识不清晰", "缸号/卷号不清晰", "开始及结束时间不清晰"], "comment": "", "unqualified": ["订单号标识不清晰", "缸号/卷号不清晰", "开始及结束时间不清晰"]},
+                    
+                    # 小项2. 待裁（3分）
+                    {"id": "cut2_1", "name": "复核面料测试报告，松布时效", "type": "非重点", "score": 1,
+                     "detail": ["未复核面料测试报告", "松布时效不足"], "comment": "", "unqualified": []},
+                    {"id": "cut2_2", "name": "裁剪计划单及签字", "type": "非重点", "score": 1,
+                     "detail": ["无裁剪计划单", "无签字"], "comment": "", "unqualified": []},
+                    {"id": "cut2_3", "name": "唛架的核对（是否缺失，对码）", "type": "非重点", "score": 1,
+                     "detail": ["唛架缺失", "对码错误"], "comment": "", "unqualified": []},
+                    
+                    # 小项3. 铺布（7分）
+                    {"id": "cut3_1", "name": "确认铺布方式（单向/双向/定位），确保一件一方向", "type": "非重点", "score": 1,
+                     "detail": ["铺布方式错误", "方向不一致"], "comment": "预防大货有色差，色光", "unqualified": []},
+                    {"id": "cut3_2", "name": "要求面料平整，无褶皱，无拉伸变形，无纬斜，且布边对齐", "type": "非重点", "score": 1,
+                     "detail": ["面料不平整有褶皱", "拉伸变形", "纬斜", "布边未对齐"], "comment": "", "unqualified": ["面料不平整有褶皱", "拉伸变形", "纬斜", "布边未对齐"]},
+                    {"id": "cut3_3", "name": "铺布层数（50-80层）薄料高度<5cm，其他面料最高不能超过12cm（自动裁床根据裁床限定高度）", "type": "非重点", "score": 1,
+                     "detail": ["层数超标", "高度超标"], "comment": "控制裁片的精准度，（层高太高容易偏刀，尺寸控制不准确）", "unqualified": []},
+                    {"id": "cut3_4", "name": "每卷面料需要用隔层纸或面料隔开", "type": "非重点", "score": 1,
+                     "detail": ["未用隔层纸/面料隔开"], "comment": "", "unqualified": []},
+                    {"id": "cut3_5", "name": "弹力面料铺布后须静置2小时", "type": "重点", "score": 3,
+                     "detail": ["未静置", "静置时间不足2小时"], "comment": "以防铺布时把面料拉伸", "unqualified": []},
+                    {"id": "cut3_6", "name": "铺布完成后用夹子四周固定，中间用重物压实（自动裁床除外）", "type": "非重点", "score": 1,
+                     "detail": ["未固定", "未压实"], "comment": "", "unqualified": []},
+                    {"id": "cut3_7", "name": "剩余面料布头需标识清晰以备换片", "type": "非重点", "score": 1,
+                     "detail": ["布头标识不清晰"], "comment": "控制换片导致色差", "unqualified": []},
+                    
+                    # 小项4. 裁片（6分）
+                    {"id": "cut4_1", "name": "裁片大小的复核（上中下各3片）", "type": "重点", "score": 3,
+                     "detail": ["未复核", "复核不全面"], "comment": "复核裁片的精准度", "unqualified": []},
+                    {"id": "cut4_2", "name": "验片外观（布疵，勾丝，污渍，印花等）", "type": "重点", "score": 3,
+                     "detail": ["未验片", "验片不全面"], "comment": "", "unqualified": []},
+                    {"id": "cut4_3", "name": "编号", "type": "非重点", "score": 1,
+                     "detail": ["未编号", "编号错误"], "comment": "", "unqualified": []},
+                    {"id": "cut4_4", "name": "用捆扎绳卷筒式捆扎（捆扎绳有裁片信息：款号，分包号，件数，缸号，尺码等）", "type": "非重点", "score": 1,
+                     "detail": ["未卷筒式捆扎", "捆扎绳信息不全"], "comment": "", "unqualified": []},
+                    {"id": "cut4_5", "name": "分码分色存放（浅色需覆盖分开放置），禁止落地", "type": "非重点", "score": 1,
+                     "detail": ["裁片未分码分色存放", "裁片落地", "浅色未覆盖"], "comment": "预防沾色，脏污等", "unqualified": ["裁片未分码分色存放", "裁片落地"]},
+                    
+                    # 小项5. 粘衬（5分）
+                    {"id": "cut5_1", "name": "粘衬机清洁和机器维护", "type": "非重点", "score": 1,
+                     "detail": ["粘衬机不清洁", "无维护记录"], "comment": "", "unqualified": []},
+                    {"id": "cut5_2", "name": "粘衬机参数（衬厂提供）和工艺单吻合", "type": "非重点", "score": 1,
+                     "detail": ["参数不吻合"], "comment": "", "unqualified": []},
+                    {"id": "cut5_3", "name": "粘衬丝缕方向同面料丝缕方向", "type": "非重点", "score": 1,
+                     "detail": ["丝缕方向不一致"], "comment": "", "unqualified": []},
+                    {"id": "cut5_4", "name": "入粘衬机时按丝缕方向送入", "type": "非重点", "score": 1,
+                     "detail": ["未按丝缕方向送入"], "comment": "预防裁片粘衬后变形", "unqualified": []},
+                    {"id": "cut5_5", "name": "首批粘衬的裁片，需做剥离测试，是否透胶等评估风险", "type": "非重点", "score": 1,
+                     "detail": ["未做剥离测试", "未评估风险"], "comment": "如有问题，立即会报裁剪主管跟进解决", "unqualified": []},
                 ]
             },
+            
+            # 第五大项：缝制工艺品质控制（总分：36分）
             "缝制工艺品质控制": {
+                "total_score": 36,
                 "items": [
-                    {"id": "sew_1", "name": "缝制线迹均匀，无跳线、断线", "type": "重点", "score": 3,
-                     "detail": ["跳线", "断线", "线迹不匀"], "comment": "线迹问题会影响成衣外观和强度"},
-                    {"id": "sew_2", "name": "缝份宽度符合工艺要求", "type": "非重点", "score": 1,
-                     "detail": ["缝份过宽", "缝份过窄"], "comment": "缝份不符合要求会影响外观和成本"},
-                    {"id": "sew_3", "name": "压脚压力调节适当", "type": "非重点", "score": 1,
-                     "detail": ["压力过大", "压力过小"], "comment": "压力不当会导致缝制质量问题"},
-                    {"id": "sew_4", "name": "针距密度符合标准", "type": "重点", "score": 3,
-                     "detail": ["针距过密", "针距过疏"], "comment": "针距不符合标准会影响缝制强度和外观"},
-                    {"id": "sew_5", "name": "特殊部位缝制质量", "type": "重点", "score": 3,
-                     "detail": ["领口不平", "袖口起皱"], "comment": "特殊部位是质量控制的重点"},
-                    {"id": "sew_6", "name": "线头清理干净", "type": "非重点", "score": 1,
-                     "detail": ["线头未清理"], "comment": "线头影响成衣外观"},
-                    {"id": "sew_7", "name": "缝制张力均匀", "type": "非重点", "score": 1,
-                     "detail": ["张力不匀"], "comment": "张力不匀会导致波浪纹"},
-                    {"id": "sew_8", "name": "对位准确，无错位", "type": "重点", "score": 3,
-                     "detail": ["对位错误", "错位"], "comment": "对位错误会导致成衣不对称"},
+                    # 小项1. 缝制设备/特种设备（4分）
+                    {"id": "sew1_1", "name": "定期维护保养记录", "type": "非重点", "score": 1,
+                     "detail": ["无维护保养记录", "记录不全"], "comment": "", "unqualified": []},
+                    {"id": "sew1_2", "name": "压脚类型与面料是否匹配", "type": "非重点", "score": 1,
+                     "detail": ["压脚类型不匹配"], "comment": "控制缝制起皱，磨破面料等问题", "unqualified": []},
+                    {"id": "sew1_3", "name": "针距/针型号是否匹配", "type": "非重点", "score": 1,
+                     "detail": ["针距不匹配", "针型号不匹配"], "comment": "", "unqualified": []},
+                    {"id": "sew1_4", "name": "缝纫线硅油用量及线迹张力核查（线迹平整度等）", "type": "非重点", "score": 1,
+                     "detail": ["硅油用量不当", "线迹张力不合适", "线迹不平整"], "comment": "", "unqualified": []},
+                    
+                    # 小项2. 点位及小烫（9分）
+                    {"id": "sew2_1", "name": "禁止使用高温消色笔", "type": "重点", "score": 3,
+                     "detail": ["使用高温消色笔"], "comment": "高温消色笔在低温（零下）会显现出来", "unqualified": []},
+                    {"id": "sew2_2", "name": "核查丝缕方向是否与纸样标注的方向一致", "type": "非重点", "score": 1,
+                     "detail": ["丝缕方向不一致"], "comment": "", "unqualified": []},
+                    {"id": "sew2_3", "name": "点位前确保裁片和纸样吻合，避免偏移", "type": "非重点", "score": 1,
+                     "detail": ["裁片和纸样不吻合", "点位偏移"], "comment": "", "unqualified": []},
+                    {"id": "sew2_4", "name": "烫台用白布包裹及台面干净整洁，定期更换", "type": "非重点", "score": 1,
+                     "detail": ["未用白布包裹", "台面不干净", "未定期更换"], "comment": "", "unqualified": []},
+                    {"id": "sew2_5", "name": "烫斗温度和面料匹配（建议真丝面料低于110度）", "type": "非重点", "score": 1,
+                     "detail": ["温度不匹配"], "comment": "", "unqualified": []},
+                    {"id": "sew2_6", "name": "烫工的操作手法是否正确（见指南）", "type": "非重点", "score": 1,
+                     "detail": ["操作手法不正确"], "comment": "", "unqualified": []},
+                    {"id": "sew2_7", "name": "是否有激光印/透胶", "type": "非重点", "score": 1,
+                     "detail": ["有激光印", "有透胶"], "comment": "", "unqualified": []},
+                    {"id": "sew2_8", "name": "是否变型/变色", "type": "非重点", "score": 1,
+                     "detail": ["变型", "变色"], "comment": "", "unqualified": []},
+                    {"id": "sew2_9", "name": "粘衬牢固度", "type": "非重点", "score": 1,
+                     "detail": ["粘衬不牢固"], "comment": "", "unqualified": []},
+                    
+                    # 小项3. 缝制中（8分）
+                    {"id": "sew3_1", "name": "重点工序悬挂指示牌及标准小样（领子，口袋，门襟，袖口等）", "type": "非重点", "score": 1,
+                     "detail": ["无指示牌", "无标准小样"], "comment": "", "unqualified": []},
+                    {"id": "sew3_2", "name": "重点工序是否有辅助工具提高质量稳定性（压脚，鱼骨，模版等）", "type": "非重点", "score": 1,
+                     "detail": ["无辅助工具"], "comment": "", "unqualified": []},
+                    {"id": "sew3_3", "name": "现场是否有首件样及资料（工艺单，辅料卡，产前会议记录等）", "type": "非重点", "score": 1,
+                     "detail": ["无首件样", "资料不全"], "comment": "", "unqualified": []},
+                    {"id": "sew3_4", "name": "线上车工技能评估（半成品的质量-皱/对称等）", "type": "重点", "score": 3,
+                     "detail": ["未评估", "评估不合格"], "comment": "", "unqualified": []},
+                    {"id": "sew3_5", "name": "巡检是否定时巡查重点工序质量", "type": "非重点", "score": 1,
+                     "detail": ["未定时巡检", "巡检不全面"], "comment": "", "unqualified": []},
+                    {"id": "sew3_6", "name": "线头是否随做随剪", "type": "非重点", "score": 1,
+                     "detail": ["线头未随做随剪"], "comment": "", "unqualified": []},
+                    {"id": "sew3_7", "name": "半成品不可捆扎过紧，避免褶皱", "type": "非重点", "score": 1,
+                     "detail": ["捆扎过紧", "有褶皱"], "comment": "", "unqualified": []},
+                    {"id": "sew3_8", "name": "流转箱用布包裹，半成品分色分码区分", "type": "非重点", "score": 1,
+                     "detail": ["未用布包裹", "未分色分码"], "comment": "预防半成品衣服在流转过程中勾纱，脏污", "unqualified": []},
+                    
+                    # 小项4. 线上检验（9分）
+                    {"id": "sew4_1", "name": "尺寸检验 每色每码 >10% 并记录", "type": "重点", "score": 3,
+                     "detail": ["检验比例不足10%", "未记录"], "comment": "", "unqualified": []},
+                    {"id": "sew4_2", "name": "外观检验 每色每码 > 10% 并记录", "type": "重点", "score": 3,
+                     "detail": ["检验比例不足10%", "未记录"], "comment": "", "unqualified": []},
+                    {"id": "sew4_3", "name": "试身小中大码和封样/首件样 对比外观及功能性（特别是重点工序），并记录", "type": "重点", "score": 3,
+                     "detail": ["未试身", "未对比", "未记录"], "comment": "", "unqualified": []},
+                    {"id": "sew4_4", "name": "中检合格品/非合格品分开摆放", "type": "非重点", "score": 1,
+                     "detail": ["未分开摆放"], "comment": "", "unqualified": []},
+                    {"id": "sew4_5", "name": "不合格品需立即退回对应工序翻修，并有组长跟进", "type": "非重点", "score": 1,
+                     "detail": ["未退回翻修", "无组长跟进"], "comment": "", "unqualified": []},
+                    {"id": "sew4_6", "name": "中检检验按工序记录疵点类型及比例，以便车工技能提升", "type": "非重点", "score": 1,
+                     "detail": ["未记录疵点类型", "未记录比例"], "comment": "", "unqualified": []},
+                    
+                    # 小项5. 唛头（3分）
+                    {"id": "sew5_1", "name": "按裁剪数量尺码数领取主标，尺码表，洗标", "type": "非重点", "score": 1,
+                     "detail": ["领取数量不符", "漏领"], "comment": "", "unqualified": []},
+                    {"id": "sew5_2", "name": "尺码表，洗标顺序不可错乱，以阅读方向缝制", "type": "非重点", "score": 1,
+                     "detail": ["顺序错乱", "缝制方向错误"], "comment": "", "unqualified": []},
+                    {"id": "sew5_3", "name": "一码一清，一款一清，如有剩余唛头，需追溯原因，并有组长跟进解决", "type": "非重点", "score": 1,
+                     "detail": ["未一码一清", "未一款一清", "剩余唛头未追溯"], "comment": "预防大货衣服错码", "unqualified": []},
                 ]
             },
+            
+            # 第六大项：后道品质控制（总分：28分）
             "后道品质控制": {
+                "total_score": 28,
                 "items": [
-                    {"id": "post_1", "name": "熨烫平整，无亮光", "type": "重点", "score": 3,
-                     "detail": ["不平整", "有亮光"], "comment": "熨烫质量直接影响成衣外观"},
-                    {"id": "post_2", "name": "纽扣/拉链等配件安装牢固", "type": "重点", "score": 3,
-                     "detail": ["松动", "脱落"], "comment": "配件不牢固是严重的质量问题"},
-                    {"id": "post_3", "name": "包装符合要求", "type": "非重点", "score": 1,
-                     "detail": ["包装不当", "包装破损"], "comment": "包装问题会影响产品形象"},
+                    # 小项1. 后道区域（3分）
+                    {"id": "post1_1", "name": "后道区域划分明确，并有清晰标识", "type": "非重点", "score": 1,
+                     "detail": ["区域划分不明确", "无清晰标识"], "comment": "", "unqualified": []},
+                    {"id": "post1_2", "name": "中转箱需要明确标识", "type": "非重点", "score": 1,
+                     "detail": ["中转箱无标识", "标识不清晰"], "comment": "", "unqualified": []},
+                    {"id": "post1_3", "name": "样衣和资料悬挂在后道区域", "type": "非重点", "score": 1,
+                     "detail": ["样衣未悬挂", "资料未悬挂"], "comment": "供后道核对品质和尺寸等", "unqualified": []},
+                    
+                    # 小项2. 锁眼钉扣（4分）
+                    {"id": "post2_1", "name": "按纸样点位，（禁止使用高温消色笔）", "type": "非重点", "score": 1,
+                     "detail": ["未按纸样点位", "使用高温消色笔"], "comment": "", "unqualified": []},
+                    {"id": "post2_2", "name": "每码一纸样，标识对应尺码", "type": "非重点", "score": 1,
+                     "detail": ["非每码一纸样", "无尺码标识"], "comment": "", "unqualified": []},
+                    {"id": "post2_3", "name": "核对锁眼纽扣的大小，位置；钉扣的牢度和纽扣的吻合度；锁眼线迹需干净整洁", "type": "非重点", "score": 1,
+                     "detail": ["大小/位置不符", "牢度和吻合度差", "线迹不干净整洁"], "comment": "", "unqualified": ["大小/位置", "牢度和吻合度", "线迹不干净整洁"]},
+                    {"id": "post2_4", "name": "核查功能性", "type": "非重点", "score": 1,
+                     "detail": ["功能性异常"], "comment": "", "unqualified": []},
+                    
+                    # 小项3. 整烫（4分）
+                    {"id": "post3_1", "name": "是否有摇臂烫台（胸省，袖笼等）", "type": "非重点", "score": 1,
+                     "detail": ["无摇臂烫台"], "comment": "", "unqualified": []},
+                    {"id": "post3_2", "name": "是否过度压烫，是否有激光印", "type": "非重点", "score": 1,
+                     "detail": ["过度压烫", "有激光印"], "comment": "", "unqualified": ["过度压烫", "有激光印"]},
+                    {"id": "post3_3", "name": "整烫后合理放置（轻薄款建议悬挂防皱）", "type": "非重点", "score": 1,
+                     "detail": ["放置不合理", "轻薄款未悬挂"], "comment": "", "unqualified": []},
+                    {"id": "post3_4", "name": "平放不易过高，底层不可以明显褶皱", "type": "非重点", "score": 1,
+                     "detail": ["平放过高", "底层有明显褶皱"], "comment": "", "unqualified": []},
+                    
+                    # 小项4. 总检（11分）
+                    {"id": "post4_1", "name": "检验区域光源不得低于750LUX，温湿度计及记录（室内湿度超过65%，关注产品潮湿度）", "type": "非重点", "score": 1,
+                     "detail": ["光源低于750LUX", "无温湿度计及记录"], "comment": "", "unqualified": ["光源低于750LUX", "无温湿度计及记录"]},
+                    {"id": "post4_2", "name": "按码数100%检验（尺寸，标，外观，功能，湿度，试身效果等），后道主管/质量经理需抽查合格品（建议抽查每人员5%）", "type": "重点", "score": 3,
+                     "detail": ["未按码数100%检验", "未按要求抽查"], "comment": "", "unqualified": ["未按码数100%检验", "未按要求抽查"]},
+                    {"id": "post4_3", "name": "疵点问题需清晰标识", "type": "非重点", "score": 1,
+                     "detail": ["疵点未标识", "标识不清晰"], "comment": "", "unqualified": []},
+                    {"id": "post4_4", "name": "待检品/合格品/不合格品分开放置", "type": "非重点", "score": 1,
+                     "detail": ["未分开放置"], "comment": "", "unqualified": []},
+                    {"id": "post4_5", "name": "污渍清理需在指定区域清理（确保返工后无水印，无变色，无异味）", "type": "非重点", "score": 1,
+                     "detail": ["未在指定区域清理", "返工后有水印/变色/异味"], "comment": "", "unqualified": []},
+                    {"id": "post4_6", "name": "总检跟踪翻修品，当天款当天结束", "type": "非重点", "score": 1,
+                     "detail": ["未跟踪翻修品", "当天款未当天结束"], "comment": "", "unqualified": []},
+                    {"id": "post4_7", "name": "总检汇总100%检验记录（报告）和疵点问题（建议汇总次品率），并反馈生产部门改进", "type": "重点", "score": 3,
+                     "detail": ["未汇总检验记录", "未汇总疵点问题", "未反馈改进"], "comment": "后续提升大货的品质的依据", "unqualified": []},
+                    
+                    # 小项5. 包装（5分）
+                    {"id": "post5_1", "name": "是否有标准包装样", "type": "非重点", "score": 1,
+                     "detail": ["无标准包装样"], "comment": "", "unqualified": []},
+                    {"id": "post5_2", "name": "分色分码分区包装（潮湿度需达到客户要求）", "type": "非重点", "score": 1,
+                     "detail": ["未分色分码分区", "潮湿度未达标"], "comment": "", "unqualified": []},
+                    {"id": "post5_3", "name": "胶袋贴纸和裁剪数尺码吻合，一码一清，分码入筐", "type": "重点", "score": 3,
+                     "detail": ["贴纸和裁剪数不吻合", "未一码一清", "未分码入筐"], "comment": "预防包装错码", "unqualified": []},
+                    {"id": "post5_4", "name": "一款一清，如有剩余贴纸，需追溯原因，并由组长跟进解决", "type": "非重点", "score": 1,
+                     "detail": ["未一款一清", "剩余贴纸未追溯"], "comment": "", "unqualified": []},
+                    {"id": "post5_5", "name": "9点测试记录及检针报告", "type": "非重点", "score": 1,
+                     "detail": ["无9点测试记录", "无检针报告"], "comment": "控制衣服内的金属和安全性", "unqualified": []},
+                    
+                    # 小项6. 装箱（4分）
+                    {"id": "post6_1", "name": "按装箱单装箱（业务部门评估复核）", "type": "非重点", "score": 1,
+                     "detail": ["未按装箱单装箱", "未复核"], "comment": "", "unqualified": []},
+                    {"id": "post6_2", "name": "纸箱尺寸和质量是否按客人要求", "type": "非重点", "score": 1,
+                     "detail": ["尺寸不符合要求", "质量不符合要求"], "comment": "", "unqualified": ["尺寸不符合要求", "质量不符合要求"]},
+                    {"id": "post6_3", "name": "纸箱外观（不可鼓箱，不可超重，不可空箱）", "type": "非重点", "score": 1,
+                     "detail": ["鼓箱", "超重", "空箱"], "comment": "", "unqualified": ["鼓箱", "超重", "空箱"]},
+                    {"id": "post6_4", "name": "箱唛贴纸信息核对，里外一致（与箱单/订单）", "type": "非重点", "score": 1,
+                     "detail": ["信息不一致", "里外不一致"], "comment": "", "unqualified": []},
                 ]
             },
-            "质量部门品质控制/其他": {
+            
+            # 第七大项：质量部门品质控制（总分：1分）
+            "质量部门品质控制": {
+                "total_score": 1,
                 "items": [
-                    {"id": "quality_1", "name": "质量检验流程规范", "type": "重点", "score": 3,
-                     "detail": ["流程不规范", "检验缺失"], "comment": "检验流程不规范会导致质量问题漏检"},
-                    {"id": "quality_2", "name": "质量记录完整可追溯", "type": "重点", "score": 3,
-                     "detail": ["记录缺失", "记录不全"], "comment": "质量记录是追溯的重要依据"},
-                    {"id": "quality_3", "name": "不合格品标识和隔离", "type": "非重点", "score": 1,
-                     "detail": ["标识不清", "未隔离"], "comment": "不合格品必须明确标识并隔离"},
+                    # 小项1. AQL抽检（1分）
+                    {"id": "q1_1", "name": "按AQL4.0/L2检验", "type": "非重点", "score": 1,
+                     "detail": ["未按AQL4.0/L2检验"], "comment": "", "unqualified": []},
+                ]
+            },
+            
+            # 第八大项：其他评分（总分：5分）
+            "其他评分": {
+                "total_score": 5,
+                "items": [
+                    # 小项1. Dummy（1分）
+                    {"id": "o1_1", "name": "是否有标准Dummy", "type": "非重点", "score": 1,
+                     "detail": ["无标准Dummy"], "comment": "", "unqualified": []},
+                    
+                    # 小项2. 利器管控（3分）
+                    {"id": "o2_1", "name": "是否专人专管（如裁剪刀等）", "type": "非重点", "score": 1,
+                     "detail": ["非专人专管"], "comment": "", "unqualified": []},
+                    {"id": "o2_2", "name": "是否有完整的换针记录", "type": "非重点", "score": 1,
+                     "detail": ["无换针记录", "记录不完整"], "comment": "", "unqualified": []},
+                    {"id": "o2_3", "name": "小剪刀等是否捆绑固定", "type": "非重点", "score": 1,
+                     "detail": ["未捆绑固定"], "comment": "", "unqualified": []},
+                    
+                    # 小项3. 其他（1分）
+                    {"id": "o3_1", "name": "个人生活物品食物等禁止出现在生产区域", "type": "非重点", "score": 1,
+                     "detail": ["生产区域有生活物品", "生产区域有食物"], "comment": "", "unqualified": []},
                 ]
             },
         }
@@ -181,6 +486,7 @@ class DataStore:
         """添加评估记录"""
         evaluation['id'] = len(self.evaluations) + 1
         evaluation['created_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        evaluation['system_total_score'] = self.total_system_score  # 177分体系
         self.evaluations.append(evaluation)
         self._save_evaluations()
         return evaluation
@@ -209,772 +515,4 @@ class DataStore:
             filtered = [ev for ev in filtered if ev['factory_id'] == factory_id]
         
         if start_date:
-            filtered = [ev for ev in filtered if ev['date'] >= start_date]
-        
-        if end_date:
-            filtered = [ev for ev in filtered if ev['date'] <= end_date]
-        
-        if status:
-            filtered = [ev for ev in filtered if ev['status'] == status]
-        
-        return sorted(filtered, key=lambda x: x['date'], reverse=True)
-    
-    def save_scores(self, evaluation_id, scores):
-        """保存评分明细"""
-        # 删除旧的评分
-        self.scores = [s for s in self.scores if s['evaluation_id'] != evaluation_id]
-        
-        # 添加新评分
-        for item_id, score_data in scores.items():
-            self.scores.append({
-                'evaluation_id': evaluation_id,
-                'item_id': item_id,
-                'passed': score_data['passed'],
-                'details': score_data.get('details', []),
-                'score': score_data['score']
-            })
-        
-        self._save_scores()
-    
-    def get_scores(self, evaluation_id):
-        """获取评估的评分明细"""
-        return {s['item_id']: s for s in self.scores if s['evaluation_id'] == evaluation_id}
-    
-    def get_comment_summary(self, evaluation_id):
-        """生成评估摘要"""
-        scores = self.get_scores(evaluation_id)
-        evaluation = self.get_evaluation(evaluation_id)
-        
-        key_comments = []
-        other_comments = []
-        
-        for module_name, module_data in self.modules.items():
-            for item in module_data['items']:
-                item_id = item['id']
-                if item_id in scores:
-                    score_data = scores[item_id]
-                    if not score_data['passed']:
-                        # 构建comment
-                        comment_parts = [item['name']]
-                        
-                        # 添加details
-                        if score_data.get('details'):
-                            comment_parts.extend(score_data['details'])
-                        
-                        # 添加comment
-                        if item.get('comment'):
-                            comment_parts.append(item['comment'])
-                        
-                        comment_text = "；".join(comment_parts)
-                        
-                        if item['type'] == '重点':
-                            key_comments.append({
-                                'module': module_name,
-                                'item': item['name'],
-                                'comment': comment_text
-                            })
-                        else:
-                            other_comments.append({
-                                'module': module_name,
-                                'item': item['name'],
-                                'comment': comment_text
-                            })
-        
-        return {
-            'key_comments': key_comments,
-            'other_comments': other_comments
-        }
-
-# ==================== 会话状态管理 ====================
-def init_session_state():
-    """初始化会话状态"""
-    if 'data_store' not in st.session_state:
-        st.session_state.data_store = DataStore()
-    
-    if 'logged_in' not in st.session_state:
-        st.session_state.logged_in = False
-    
-    if 'current_user' not in st.session_state:
-        st.session_state.current_user = None
-    
-    if 'current_evaluation' not in st.session_state:
-        st.session_state.current_evaluation = None
-    
-    if 'selected_modules' not in st.session_state:
-        st.session_state.selected_modules = []
-
-# ==================== 认证功能 ====================
-def login_page():
-    """登录页面"""
-    st.title("🏭 工厂流程审核评分系统")
-    st.markdown("---")
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        st.subheader("用户登录")
-        
-        username = st.text_input("用户名", key="login_username")
-        password = st.text_input("密码", type="password", key="login_password")
-        
-        if st.button("登录", use_container_width=True):
-            data_store = st.session_state.data_store
-            user = next((u for u in data_store.users if u['username'] == username), None)
-            
-            if user and user['password'] == password:
-                st.session_state.logged_in = True
-                st.session_state.current_user = user
-                st.success(f"欢迎回来，{user['name']}！")
-                st.rerun()
-            else:
-                st.error("用户名或密码错误！")
-        
-        st.markdown("---")
-        st.info("**默认账号**\n\n- 管理员：admin / admin123\n- 评估员：evaluator / eval123")
-
-def logout():
-    """退出登录"""
-    st.session_state.logged_in = False
-    st.session_state.current_user = None
-    st.session_state.current_evaluation = None
-    st.rerun()
-
-# ==================== 侧边栏 ====================
-def render_sidebar():
-    """渲染侧边栏"""
-    with st.sidebar:
-        st.title("🏭 工厂审核系统")
-        
-        # 用户信息
-        if st.session_state.logged_in:
-            user = st.session_state.current_user
-            st.info(f"**当前用户**\n\n{user['name']}\n{user['role']}")
-            
-            if st.button("退出登录", use_container_width=True):
-                logout()
-        
-        st.markdown("---")
-        
-        # 导航菜单
-        if st.session_state.logged_in:
-            page = st.radio(
-                "功能导航",
-                ["🏠 首页", "📝 开始评估", "📋 历史记录", "📊 对比分析", "⚙️ 系统设置"],
-                label_visibility="collapsed"
-            )
-            return page
-        else:
-            return None
-
-# ==================== 首页 ====================
-def render_dashboard():
-    """首页"""
-    st.title("🏠 首页")
-    
-    data_store = st.session_state.data_store
-    evaluations = data_store.get_evaluations()
-    
-    # 统计卡片
-    col1, col2, col3 = st.columns(3)
-    
-    # 待完成评估（未提交的）
-    pending_count = len([e for e in evaluations if e['status'] == '进行中'])
-    with col1:
-        st.metric("📋 待完成评估", pending_count)
-    
-    # 本月评估数量
-    current_month = datetime.now().month
-    month_evaluations = [e for e in evaluations if datetime.strptime(e['date'], '%Y-%m-%d').month == current_month]
-    with col2:
-        st.metric("📅 本月评估", len(month_evaluations))
-    
-    # 平均分
-    completed_evaluations = [e for e in evaluations if e['status'] != '进行中' and e['total_score'] > 0]
-    avg_score = sum(e['current_score'] for e in completed_evaluations) / len(completed_evaluations) if completed_evaluations else 0
-    with col3:
-        st.metric("📊 平均得分", f"{avg_score:.1f}分")
-    
-    st.markdown("---")
-    
-    # 问题预警
-    st.subheader("⚠️ 问题预警")
-    
-    pending_evaluations = [e for e in evaluations if e['status'] == '进行中']
-    if pending_evaluations:
-        for ev in pending_evaluations[:3]:
-            factory = next((f for f in data_store.factories if f['id'] == ev['factory_id']), None)
-            st.warning(f"📍 {factory['name'] if factory else '未知工厂'} - {ev['modules_str']} 评估进行中")
-    else:
-        st.info("暂无待处理问题")
-    
-    st.markdown("---")
-    
-    # 最近评估记录
-    st.subheader("📝 最近评估记录")
-    
-    if evaluations:
-        # 准备数据
-        df_data = []
-        for ev in evaluations[:10]:
-            factory = next((f for f in data_store.factories if f['id'] == ev['factory_id']), None)
-            df_data.append({
-                "工厂名称": factory['name'] if factory else '未知',
-                "评估日期": ev['date'],
-                "评估模块": ev['modules_str'],
-                "总分": ev['total_score'],
-                "状态": ev['status']
-            })
-        
-        df = pd.DataFrame(df_data)
-        
-        # 状态颜色
-        def highlight_status(val):
-            if val == '优秀':
-                return 'background-color: #d4edda'
-            elif val == '合格':
-                return 'background-color: #fff3cd'
-            elif val == '待改进':
-                return 'background-color: #f8d7da'
-            return ''
-        
-        styled_df = df.style.applymap(highlight_status, subset=['状态'])
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    else:
-        # 修复：内层用单引号，外层用双引号
-        st.info("暂无评估记录，点击'开始评估'创建新评估")
-
-# ==================== 开始评估 ====================
-def render_evaluation_create():
-    """创建评估"""
-    st.title("📝 开始评估")
-    
-    data_store = st.session_state.data_store
-    
-    # 步骤1：选择工厂和日期
-    st.subheader("第一步：选择工厂")
-    
-    factories = {f['id']: f['name'] for f in data_store.factories}
-    factory_id = st.selectbox("选择工厂", options=list(factories.keys()), format_func=lambda x: factories[x])
-    
-    evaluation_date = st.date_input("评估日期", value=datetime.now().date())
-    
-    # 步骤2：选择评估模块
-    st.subheader("第二步：选择评估模块（可多选）")
-    
-    selected_modules = st.multiselect(
-        "选择要评估的模块",
-        options=list(data_store.modules.keys()),
-        default=[],
-        help="选择本次评估需要检查的模块"
-    )
-    
-    if selected_modules:
-        st.info(f"已选择 {len(selected_modules)} 个模块：{', '.join(selected_modules)}")
-    
-    # 创建评估
-    if st.button("开始评估", type="primary", use_container_width=True):
-        if not selected_modules:
-            st.error("请至少选择一个评估模块！")
-        else:
-            # 计算总分和重点项总分
-            total_score = 0
-            key_score = 0
-            for module in selected_modules:
-                for item in data_store.modules[module]['items']:
-                    total_score += item['score']
-                    if item['type'] == '重点':
-                        key_score += item['score']
-            
-            # 创建评估记录
-            evaluation = {
-                'factory_id': factory_id,
-                'factory_name': factories[factory_id],
-                'date': evaluation_date.strftime('%Y-%m-%d'),
-                'modules': selected_modules,
-                'modules_str': '、'.join(selected_modules),
-                'total_score': total_score,
-                'key_score': key_score,
-                'current_score': 0,
-                'current_key_score': 0,
-                'status': '进行中',
-                'evaluator': st.session_state.current_user['name']
-            }
-            
-            evaluation = data_store.add_evaluation(evaluation)
-            st.session_state.current_evaluation = evaluation
-            st.session_state.selected_modules = selected_modules
-            
-            st.success(f"评估创建成功！评估ID：{evaluation['id']}")
-            st.rerun()
-
-def render_evaluation_detail():
-    """评估详情"""
-    st.title("📝 评估详情")
-    
-    if not st.session_state.current_evaluation:
-        st.warning("请先创建评估")
-        return
-    
-    evaluation = st.session_state.current_evaluation
-    data_store = st.session_state.data_store
-    
-    # 评估信息
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.info(f"🏭 工厂：{evaluation['factory_name']}")
-    with col2:
-        st.info(f"📅 日期：{evaluation['date']}")
-    with col3:
-        st.info(f"👤 评估员：{evaluation['evaluator']}")
-    with col4:
-        st.info(f"📊 模块：{evaluation['modules_str']}")
-    
-    st.markdown("---")
-    
-    # 进度条
-    scores = data_store.get_scores(evaluation['id'])
-    total_items = sum(len(data_store.modules[module]['items']) for module in evaluation['modules'])
-    scored_items = len(scores)
-    progress = scored_items / total_items if total_items > 0 else 0
-    
-    st.progress(progress)
-    st.caption(f"当前进度：{scored_items}/{total_items} 项 ({progress*100:.1f}%)")
-    
-    # 当前得分
-    current_score = evaluation['current_score']
-    total_possible = evaluation['total_score']
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("当前得分", f"{current_score}分")
-    with col2:
-        st.metric("总分", f"{total_possible}分")
-    
-    st.markdown("---")
-    
-    # 评分表单
-    st.subheader("评分详情")
-    
-    # 按模块显示
-    for module_name in evaluation['modules']:
-        st.markdown(f"### {module_name}")
-        
-        module_data = data_store.modules[module_name]
-        
-        for item in module_data['items']:
-            item_id = item['id']
-            existing_score = scores.get(item_id, {})
-            
-            # 获取之前的评分状态
-            passed = existing_score.get('passed', True) if existing_score else True
-            selected_details = existing_score.get('details', []) if existing_score else []
-            
-            # 评分行
-            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
-            
-            with col1:
-                st.write(f"{'🔴' if item['type'] == '重点' else '⚪'} {item['name']}")
-            
-            with col2:
-                passed = st.checkbox(
-                    "通过",
-                    value=passed,
-                    key=f"passed_{item_id}",
-                    label_visibility="collapsed"
-                )
-            
-            with col3:
-                st.write(f"{item['score']}分")
-            
-            with col4:
-                if st.button("详情", key=f"detail_{item_id}"):
-                    pass
-            
-            # 如果不通过，显示detail选项
-            if not passed:
-                if item.get('detail'):
-                    st.markdown("**问题详情（可多选）：**")
-                    selected_details = st.multiselect(
-                        "选择发现的问题",
-                        options=item['detail'],
-                        default=selected_details,
-                        key=f"details_{item_id}",
-                        label_visibility="collapsed"
-                    )
-                
-                # 显示comment
-                if item.get('comment'):
-                    st.markdown(f"*💡 {item['comment']}*")
-            
-            # 保存评分到临时状态
-            st.session_state[f"score_{item_id}"] = {
-                'passed': passed,
-                'details': selected_details,
-                'score': item['score'] if passed else 0
-            }
-        
-        st.markdown("---")
-    
-    # 保存按钮
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col1:
-        if st.button("💾 保存进度", use_container_width=True):
-            # 收集所有评分
-            all_scores = {}
-            current_score = 0
-            current_key_score = 0
-            
-            for module_name in evaluation['modules']:
-                for item in data_store.modules[module_name]['items']:
-                    item_id = item['id']
-                    if f"score_{item_id}" in st.session_state:
-                        score_data = st.session_state[f"score_{item_id}"]
-                        all_scores[item_id] = score_data
-                        current_score += score_data['score']
-                        if item['type'] == '重点':
-                            current_key_score += score_data['score']
-            
-            # 更新评估
-            data_store.update_evaluation(evaluation['id'], {
-                'current_score': current_score,
-                'current_key_score': current_key_score
-            })
-            
-            # 保存评分明细
-            data_store.save_scores(evaluation['id'], all_scores)
-            
-            # 更新会话状态
-            st.session_state.current_evaluation = data_store.get_evaluation(evaluation['id'])
-            
-            st.success("✅ 保存成功！")
-            st.rerun()
-    
-    with col2:
-        if st.button("✅ 提交评估", type="primary", use_container_width=True):
-            # 计算得分
-            all_scores = {}
-            current_score = 0
-            current_key_score = 0
-            
-            for module_name in evaluation['modules']:
-                for item in data_store.modules[module_name]['items']:
-                    item_id = item['id']
-                    if f"score_{item_id}" in st.session_state:
-                        score_data = st.session_state[f"score_{item_id}"]
-                        all_scores[item_id] = score_data
-                        current_score += score_data['score']
-                        if item['type'] == '重点':
-                            current_key_score += score_data['score']
-            
-            # 计算合格率
-            pass_rate = (current_score / evaluation['total_score']) * 100 if evaluation['total_score'] > 0 else 0
-            
-            # 判断状态
-            if pass_rate >= 90:
-                status = '优秀'
-            elif pass_rate >= 80:
-                status = '合格'
-            else:
-                status = '待改进'
-            
-            # 更新评估
-            data_store.update_evaluation(evaluation['id'], {
-                'current_score': current_score,
-                'current_key_score': current_key_score,
-                'status': status
-            })
-            
-            # 保存评分明细
-            data_store.save_scores(evaluation['id'], all_scores)
-            
-            st.success(f"✅ 评估提交成功！最终得分：{current_score}分，状态：{status}")
-            st.session_state.current_evaluation = None
-            st.rerun()
-    
-    with col3:
-        if st.button("❌ 取消评估", use_container_width=True):
-            st.session_state.current_evaluation = None
-            st.rerun()
-
-def render_evaluation():
-    """评估页面"""
-    if st.session_state.current_evaluation:
-        render_evaluation_detail()
-    else:
-        render_evaluation_create()
-
-# ==================== 历史记录 ====================
-def render_history():
-    """历史记录"""
-    st.title("📋 历史记录")
-    
-    data_store = st.session_state.data_store
-    
-    # 筛选条件
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        factories = {"全部": None}
-        factories.update({f['id']: f['name'] for f in data_store.factories})
-        selected_factory = st.selectbox("工厂", options=list(factories.keys()))
-    
-    with col2:
-        start_date = st.date_input("开始日期", value=datetime.now().replace(day=1).date())
-    
-    with col3:
-        end_date = st.date_input("结束日期", value=datetime.now().date())
-    
-    with col4:
-        statuses = ["全部", "优秀", "合格", "待改进", "进行中"]
-        selected_status = st.selectbox("状态", options=statuses)
-    
-    # 查询
-    factory_id = selected_factory if selected_factory != "全部" else None
-    if selected_status == "全部":
-        status = None
-    else:
-        status = selected_status
-    
-    evaluations = data_store.get_evaluations(
-        factory_id=factory_id,
-        start_date=start_date.strftime('%Y-%m-%d'),
-        end_date=end_date.strftime('%Y-%m-%d'),
-        status=status
-    )
-    
-    # 显示结果
-    if evaluations:
-        # 准备数据
-        df_data = []
-        for ev in evaluations:
-            factory = next((f for f in data_store.factories if f['id'] == ev['factory_id']), None)
-            df_data.append({
-                "ID": ev['id'],
-                "工厂名称": factory['name'] if factory else '未知',
-                "评估日期": ev['date'],
-                "评估模块": ev['modules_str'],
-                "总分": ev['total_score'],
-                "得分": ev['current_score'],
-                "状态": ev['status'],
-                "评估员": ev['evaluator']
-            })
-        
-        df = pd.DataFrame(df_data)
-        
-        # 数据表格
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-        # 导出按钮
-        if st.button("📥 导出Excel", use_container_width=True):
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='历史记录')
-            st.download_button(
-                "下载Excel文件",
-                output.getvalue(),
-                "评估历史记录.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    else:
-        st.info("暂无符合条件的评估记录")
-
-# ==================== 对比分析（简化版，移除plotly依赖） ====================
-def render_compare():
-    """对比分析"""
-    st.title("📊 对比分析")
-    
-    data_store = st.session_state.data_store
-    evaluations = data_store.get_evaluations()
-    
-    completed_evaluations = [e for e in evaluations if e['status'] != '进行中']
-    
-    if len(completed_evaluations) < 2:
-        st.warning("需要至少2条已完成的评估记录才能进行对比分析")
-        return
-    
-    # 选择对比对象
-    st.subheader("选择对比工厂")
-    
-    factories = {}
-    for ev in completed_evaluations:
-        factory = next((f for f in data_store.factories if f['id'] == ev['factory_id']), None)
-        if factory:
-            if factory['name'] not in factories:
-                factories[factory['name']] = []
-            factories[factory['name']].append(ev)
-    
-    selected_factory = st.selectbox("选择工厂", options=list(factories.keys()))
-    
-    if selected_factory:
-        factory_evaluations = factories[selected_factory]
-        
-        if len(factory_evaluations) >= 2:
-            # 详细对比表（移除plotly图表，仅保留表格）
-            st.subheader(f"📈 {selected_factory} 评估得分对比")
-            
-            comparison_data = []
-            for i, ev in enumerate(sorted(factory_evaluations, key=lambda x: x['date'])[-5:]):
-                factory = next((f for f in data_store.factories if f['id'] == ev['factory_id']), None)
-                pass_rate = (ev['current_score']/ev['total_score']*100) if ev['total_score'] > 0 else 0
-                comparison_data.append({
-                    "评估日期": ev['date'],
-                    "工厂名称": factory['name'] if factory else '未知',
-                    "评估模块": ev['modules_str'],
-                    "得分": ev['current_score'],
-                    "总分": ev['total_score'],
-                    "合格率": f"{pass_rate:.1f}%",
-                    "状态": ev['status']
-                })
-            
-            df_compare = pd.DataFrame(comparison_data)
-            st.dataframe(df_compare, use_container_width=True, hide_index=True)
-            
-            # 模块得分对比
-            st.subheader("🎯 各模块得分对比")
-            
-            module_scores = {}
-            for ev in factory_evaluations[-5:]:
-                module_scores[ev['date']] = {}
-                
-                # 获取该评估的评分明细
-                scores = data_store.get_scores(ev['id'])
-                
-                for module in ev['modules']:
-                    module_total = sum(item['score'] for item in data_store.modules[module]['items'])
-                    module_earned = 0
-                    
-                    for item in data_store.modules[module]['items']:
-                        item_id = item['id']
-                        if item_id in scores and scores[item_id]['passed']:
-                            module_earned += scores[item_id]['score']
-                    
-                    module_scores[ev['date']][module] = {
-                        'earned': module_earned,
-                        'total': module_total
-                    }
-            
-            # 转换为DataFrame
-            module_df_data = []
-            modules = set()
-            for date_scores in module_scores.values():
-                modules.update(date_scores.keys())
-            
-            for module in sorted(modules):
-                row = {"模块": module}
-                for date, scores in sorted(module_scores.items()):
-                    if module in scores:
-                        row[date] = f"{scores[module]['earned']}/{scores[module]['total']}"
-                    else:
-                        row[date] = "-"
-                module_df_data.append(row)
-            
-            if module_df_data:
-                module_df = pd.DataFrame(module_df_data)
-                st.dataframe(module_df, use_container_width=True, hide_index=True)
-            
-        else:
-            st.info(f"{selected_factory} 需要至少2条评估记录才能进行对比分析")
-
-# ==================== 系统设置 ====================
-def render_settings():
-    """系统设置"""
-    st.title("⚙️ 系统设置")
-    
-    data_store = st.session_state.data_store
-    
-    tab1, tab2, tab3 = st.tabs(["工厂管理", "用户管理", "系统信息"])
-    
-    with tab1:
-        st.subheader("工厂列表")
-        
-        factory_data = []
-        for factory in data_store.factories:
-            # 统计该工厂的评估次数
-            eval_count = len(data_store.get_evaluations(factory_id=factory['id']))
-            factory_data.append({
-                "ID": factory['id'],
-                "工厂名称": factory['name'],
-                "联系人": factory['contact'],
-                "电话": factory['phone'],
-                "评估次数": eval_count
-            })
-        
-        df = pd.DataFrame(factory_data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-        st.markdown("---")
-        
-        # 添加新工厂（演示功能）
-        st.subheader("添加新工厂")
-        
-        with st.expander("展开添加工厂表单"):
-            new_name = st.text_input("工厂名称")
-            new_contact = st.text_input("联系人")
-            new_phone = st.text_input("联系电话")
-            
-            if st.button("添加工厂"):
-                st.info("（演示版本）工厂添加功能待完善")
-    
-    with tab2:
-        st.subheader("用户列表")
-        
-        user_data = []
-        for user in data_store.users:
-            user_data.append({
-                "ID": user['id'],
-                "用户名": user['username'],
-                "姓名": user['name'],
-                "角色": user['role']
-            })
-        
-        df = pd.DataFrame(user_data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-        st.info("（演示版本）用户管理功能待完善")
-    
-    with tab3:
-        st.subheader("系统信息")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.info(f"**系统版本**\n\n工厂流程审核评分系统 v1.0.0")
-            st.info(f"**部署方式**\n\nStreamlit Cloud")
-        
-        with col2:
-            # 统计信息
-            evaluations = data_store.evaluations
-            completed = [e for e in evaluations if e['status'] != '进行中']
-            
-            st.metric("总评估数", len(evaluations))
-            st.metric("已完成评估", len(completed))
-            st.metric("注册工厂数", len(data_store.factories))
-            st.metric("注册用户数", len(data_store.users))
-
-# ==================== 主程序 ====================
-def main():
-    """主函数"""
-    # 初始化会话状态
-    init_session_state()
-    
-    # 渲染侧边栏
-    page = render_sidebar()
-    
-    # 根据页面路由
-    if st.session_state.logged_in:
-        if page == "🏠 首页":
-            render_dashboard()
-        elif page == "📝 开始评估":
-            render_evaluation()
-        elif page == "📋 历史记录":
-            render_history()
-        elif page == "📊 对比分析":
-            render_compare()
-        elif page == "⚙️ 系统设置":
-            render_settings()
-    else:
-        login_page()
-
-if __name__ == "__main__":
-    main()
+            filtered = [ev for ev in filtered if ev
