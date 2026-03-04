@@ -439,7 +439,7 @@ def render_dashboard():
         styled_df = df.style.applymap(highlight_status, subset=['状态'])
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
-        st.info("暂无评估记录，点击"开始评估"创建新评估")
+        st.info("暂无评估记录，点击'开始评估'创建新评估")
 
 # ==================== 开始评估 ====================
 def render_evaluation_create():
