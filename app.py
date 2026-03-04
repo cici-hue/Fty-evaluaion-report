@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 # 可选：如果仍有依赖问题，先注释 plotly 相关导入
-# import plotly.express as px
-# import plotly.graph_objects as go
+import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, date
 import json
 import os
