@@ -199,9 +199,19 @@ def generate_pdf(evaluation):
             'CustomTotalScore',
             parent=styles['Normal'],
             fontName=CHINESE_FONT,
-            fontSize=14,
+            fontSize=16,  # 字体加大
             spaceAfter=12,
-            textColor='red'  # 红色
+            textColor='red',  # 红色
+            fontName='SimSun-Bold' if 'SimSun-Bold' in pdfmetrics.getRegisteredFontNames() else CHINESE_FONT,
+            bold=True  # 加粗
+        ),
+        'KeyProcess': ParagraphStyle(
+            'CustomKeyProcess',
+            parent=styles['Normal'],
+            fontName=CHINESE_FONT,
+            fontSize=12,
+            spaceAfter=6,
+            textColor='red'  # 重点工序文字红色
         )
     }
 
@@ -214,7 +224,7 @@ def generate_pdf(evaluation):
         Paragraph(f"工厂名称：{factory_name}", chinese_styles['Normal']),
         Paragraph(f"评估日期：{evaluation['eval_date']}", chinese_styles['Normal']),
         Paragraph(f"评估人员：{evaluation['evaluator']}", chinese_styles['Normal']),
-        # 2. 工厂总分，加大加红
+        # 2. 工厂总分，加大加粗加红
         Paragraph(f"工厂总分：{evaluation['overall_percent']:.2f}%", chinese_styles['TotalScore']),
         Spacer(1, 12)
     ])
@@ -245,17 +255,17 @@ def generate_pdf(evaluation):
                     else:
                         other_items.append(item_text)
 
-    # （一）重点工序
+    # （一）重点工序（标题+内容都红色）
     if key_items:
-        elements.append(Paragraph("（一）重点工序", chinese_styles['Normal']))
+        elements.append(Paragraph("（一）重点工序", chinese_styles['KeyProcess']))
         for i, text in enumerate(key_items, 1):
-            elements.append(Paragraph(f"{i}. {text}", chinese_styles['Normal']))
+            elements.append(Paragraph(f"{i}. {text}", chinese_styles['KeyProcess']))
             elements.append(Spacer(1, 6))
     else:
-        elements.append(Paragraph("（一）重点工序：本次评估未发现重点工序问题", chinese_styles['Normal']))
+        elements.append(Paragraph("（一）重点工序：本次评估未发现重点工序问题", chinese_styles['KeyProcess']))
         elements.append(Spacer(1, 6))
 
-    # （二）其他工序
+    # （二）其他工序（正常黑色）
     if other_items:
         elements.append(Paragraph("（二）其他工序", chinese_styles['Normal']))
         for i, text in enumerate(other_items, 1):
