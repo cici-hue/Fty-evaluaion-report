@@ -18,6 +18,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+@st.dialog("查看原图")
+def show_full_image(image_path):
+    st.image(image_path, use_container_width=True)
+    
 # ==================== 字体配置 - 使用上传的SimSun.ttf ====================
 def setup_chinese_font():
     font_path = os.path.join(os.path.dirname(__file__), "SimSun.ttf")
@@ -289,10 +293,11 @@ def main():
 
 # ==================== 核心评估页面（一键全选/清空 修复版） ====================
 # ==================== 核心评估页面（增加拍照功能） ====================
+# ==================== 核心评估页面（优化版：拍照/缩略图/大图） ====================
 def start_evaluation():
     st.subheader("开始评估")
 
-    # --- 基础信息配置 ---
+    # --- 基础配置区域 ---
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         factory_id = st.selectbox("工厂", [(f['id'], f['name']) for f in db.factories], format_func=lambda x: x[1])[0]
@@ -310,26 +315,21 @@ def start_evaluation():
         st.warning("请选择至少一个模块")
         return
 
-    # 收集当前页面所有 item_id
+    # 初始化逻辑
     all_item_ids = []
     for mod_name in selected_modules:
         for sub_mod in db.modules[mod_name]['sub_modules'].values():
             for it in sub_mod['items']:
                 all_item_ids.append(it['id'])
 
-    # 初始化逻辑（增加 image_path 存储）
     if 'eval_results' not in st.session_state:
         st.session_state.eval_results = {}
     
     for it_id in all_item_ids:
         if it_id not in st.session_state.eval_results:
-            st.session_state.eval_results[it_id] = {
-                "is_checked": False, 
-                "details": [], 
-                "image_path": None  # 新增：用于存储图片文件路径
-            }
+            st.session_state.eval_results[it_id] = {"is_checked": False, "details": [], "image_path": None}
 
-    # 一键操作按钮
+    # 一键操作
     col_a, col_b, _ = st.columns([1, 1, 6])
     with col_a:
         if st.button("✅ 一键全选"):
@@ -348,74 +348,63 @@ def start_evaluation():
     total_earned = 0
 
     for mod_name in selected_modules:
-        mod = db.modules[mod_name]
-        mod_earned = 0
         with st.expander(f"📦 {mod_name}", expanded=True):
-            for sub_name, sub_mod in mod['sub_modules'].items():
-                sub_earned = sum(it['score'] for it in sub_mod['items'] if st.session_state.get(f"chk_{it['id']}", False))
-                st.markdown(f"### {sub_name}")
-                st.divider()
-
+            for sub_name, sub_mod in db.modules[mod_name]['sub_modules'].items():
+                st.markdown(f"##### {sub_name}")
+                
                 for it in sub_mod['items']:
                     it_id = it['id']
-                    label = it['name']
-                    if it.get('is_key'): label = f":orange[{label}]"
-
-                    # 1. 复选框
-                    checked = st.checkbox(label, key=f"chk_{it_id}")
-                    st.session_state.eval_results[it_id]['is_checked'] = checked
-                    mod_earned += it['score'] if checked else 0
-
-                    # 2. 详情与图片上传区 (占据一排)
-                    c1, c2, c3 = st.columns([1.5, 1.5, 1])
                     
-                    # 问题详情选择
+                    # --- 核心 UI 布局 ---
+                    # c1: 复选框, c2: 拍照/上传小按钮, c3: 缩略图显示
+                    c1, c2, c3 = st.columns([0.6, 0.2, 0.2])
+                    
                     with c1:
-                        if not checked and it['details']:
-                            st.session_state.eval_results[it_id]['details'] = st.multiselect(
-                                "问题详情", it['details'],
-                                default=st.session_state.eval_results[it_id]['details'],
-                                key=f"det_{it_id}"
-                            )
-                        elif not checked:
-                            st.caption("暂无预设问题详情")
+                        label = it['name']
+                        if it.get('is_key'): label = f":orange[{label}]"
+                        checked = st.checkbox(label, key=f"chk_{it_id}")
+                        st.session_state.eval_results[it_id]['is_checked'] = checked
+                        total_earned += it['score'] if checked else 0
 
-                    # 图片上传/拍照
                     with c2:
-                        # 使用 file_uploader，在手机端会自动触发“拍照或相册”
-                        img_file = st.file_uploader(
-                            "上传图片/拍照", 
-                            type=['jpg', 'jpeg', 'png'], 
-                            key=f"img_{it_id}",
-                            label_visibility="collapsed" # 隐藏标签使界面紧凑
-                        )
-                        
-                        if img_file:
-                            # 自动保存文件到本地
-                            file_ext = img_file.name.split('.')[-1]
-                            file_name = f"{it_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_ext}"
-                            save_path = os.path.join(MEDIA_DIR, file_name)
-                            with open(save_path, "wb") as f:
-                                f.write(img_file.getbuffer())
-                            st.session_state.eval_results[it_id]['image_path'] = save_path
-                            st.caption("✅ 已上传")
+                        # 气泡按钮：点击才展开上传界面，节省空间
+                        with st.popover("📸 请拍照上传"):
+                            img_file = st.file_uploader("拍照或选图", type=['jpg','png','jpeg'], key=f"up_{it_id}")
+                            if img_file:
+                                file_ext = img_file.name.split('.')[-1]
+                                file_name = f"{it_id}_{datetime.now().strftime('%H%M%S')}.{file_ext}"
+                                save_path = os.path.join(MEDIA_DIR, file_name)
+                                with open(save_path, "wb") as f:
+                                    f.write(img_file.getbuffer())
+                                st.session_state.eval_results[it_id]['image_path'] = save_path
+                                st.success("已保存")
 
-                    # 改进建议预览
                     with c3:
-                        if not checked and it['comment']:
-                            with st.popover("查看建议"):
-                                st.info(it['comment'])
+                        # 缩略图显示及大图查看
+                        img_path = st.session_state.eval_results[it_id].get('image_path')
+                        if img_path and os.path.exists(img_path):
+                            # 显示超小缩略图
+                            st.image(img_path, width=50)
+                            if st.button("查看", key=f"btn_view_{it_id}"):
+                                show_full_image(img_path)
 
-                    st.markdown("---")
-        total_earned += mod_earned
+                    # 如果没勾选，显示问题详情选择（可选）
+                    if not checked:
+                        if it['details']:
+                            st.session_state.eval_results[it_id]['details'] = st.multiselect(
+                                "问题详情", it['details'], 
+                                default=st.session_state.eval_results[it_id]['details'],
+                                key=f"det_{it_id}", label_visibility="collapsed"
+                            )
+                    st.divider()
 
-    # 评估总结
-    st.subheader("评估总结")
+    # --- 总结区域 ---
     overall_percent = (total_earned / db.total_system_score * 100) if db.total_system_score else 0
     st.metric("整体评分占比", f"{overall_percent:.2f}%")
-    comments = st.text_area("评估评论", height=100)
+    comments = st.text_area("评估评论", height=80)
 
     if st.button("保存并生成报告", type="primary"):
+        # ... (保存逻辑保持不变)
         ev_data = {
             "factory_id": factory_id,
             "evaluator": eval_evaluator,
@@ -427,13 +416,10 @@ def start_evaluation():
             "comments": comments
         }
         saved = db.add_evaluation(ev_data)
-        st.success("保存成功！报告已归档。")
+        st.success("保存成功！")
         pdf_buf = generate_pdf(saved)
         st.download_button("📥 下载PDF报告", pdf_buf, f"评估报告_{saved['id']}.pdf")
-        
-        # 清除状态以备下次使用
-        if 'eval_results' in st.session_state:
-            del st.session_state.eval_results
+        del st.session_state.eval_results
 
 # ==================== 历史记录 ====================
 def show_history():
