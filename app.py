@@ -198,11 +198,10 @@ def generate_pdf(evaluation):
         'TotalScore': ParagraphStyle(
             'CustomTotalScore',
             parent=styles['Normal'],
-            fontName=CHINESE_FONT,
+            fontName=CHINESE_FONT,  # 只保留一个fontName定义
             fontSize=16,  # 字体加大
             spaceAfter=12,
             textColor='red',  # 红色
-            fontName='SimSun-Bold' if 'SimSun-Bold' in pdfmetrics.getRegisteredFontNames() else CHINESE_FONT,
             bold=True  # 加粗
         ),
         'KeyProcess': ParagraphStyle(
