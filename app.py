@@ -114,7 +114,7 @@ class DataStore:
                                 "id": "m1_5",
                                 "name": "温湿度计及记录（湿度<65%）",
                                 "score": 1,
-                                "is_key": False,
+                                "is_key": True,
                                 "details": ["无温湿度计", "无记录", "湿度超标"],
                                 "comment": "监控湿度的变化，便于采取相应的解决方案（如抽湿）"
                             },
@@ -210,7 +210,7 @@ def generate_pdf(evaluation):
             fontName=CHINESE_FONT,
             fontSize=12,
             spaceAfter=6,
-            textColor='#FF8C00'  # 橙色（也可以用'orange'）
+            textColor='#FF8C00'  # 橙色
         )
     }
 
@@ -287,8 +287,14 @@ def generate_pdf(evaluation):
 
 # ==================== 页面路由 ====================
 def main():
+    # 初始化session状态
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'eval_results' not in st.session_state:
+        st.session_state.eval_results = {}
+
     # 登录页
-    if 'user' not in st.session_state:
+    if not st.session_state.logged_in:
         st.title("工厂流程审核评分系统")
         col1, col2, col3 = st.columns([1,2,1])
         with col2:
@@ -296,14 +302,20 @@ def main():
             password = st.text_input("密码", type="password")
             if st.button("登录", type="primary"):
                 if next((u for u in db.users if u['username'] == username and u['password'] == password), None):
-                    st.session_state['user'] = username
+                    st.session_state.logged_in = True
                     st.rerun()
                 else:
                     st.error("账号或密码错误")
         return
 
-    # 主界面侧边栏
-    st.sidebar.title(f"欢迎，{st.session_state['user']}")
+    # 已登录状态 - 侧边栏增加退出登录按钮
+    st.sidebar.title(f"欢迎，{st.session_state.get('user', '管理员')}")
+    if st.sidebar.button("退出登录", type="secondary"):
+        st.session_state.logged_in = False
+        st.session_state.eval_results = {}
+        st.rerun()
+
+    # 功能菜单
     menu = st.sidebar.radio("功能菜单", ["开始评估", "历史记录", "对比分析"])
     
     if menu == "开始评估":
@@ -314,7 +326,7 @@ def main():
         st.subheader("对比分析")
         st.info("功能开发中...")
 
-# ==================== 核心评估页面 ====================
+# ==================== 核心评估页面（增加一键全选/清空功能） ====================
 def start_evaluation():
     st.subheader("开始评估")
     
@@ -325,7 +337,7 @@ def start_evaluation():
     with col2:
         eval_date = st.date_input("日期", date.today())
     with col3:
-        evaluator = st.text_input("评估人员", value=st.session_state['user'])
+        evaluator = st.text_input("评估人员", value=st.session_state.get('user', '管理员'))
     with col4:
         eval_type = st.selectbox("评估类型", ["常规审核", "整改复查"])
 
@@ -341,13 +353,25 @@ def start_evaluation():
             return
 
     # 3. 初始化评估结果存储
-    if 'eval_results' not in st.session_state:
-        st.session_state.eval_results = {}
-        # 预加载所有项为未勾选
-        for mod in selected_modules:
-            for sub_mod in db.modules[mod]['sub_modules'].values():
+    if not st.session_state.eval_results:
+        for mod_name in selected_modules:
+            mod = db.modules[mod_name]
+            for sub_name, sub_mod in mod['sub_modules'].items():
                 for item in sub_mod['items']:
                     st.session_state.eval_results[item['id']] = {"is_checked": False, "details": []}
+
+    # 新增：一键全选/清空按钮
+    col_btn1, col_btn2, _ = st.columns([1,1,8])
+    with col_btn1:
+        if st.button("✅ 一键全选", type="primary"):
+            for item_id in st.session_state.eval_results.keys():
+                st.session_state.eval_results[item_id]['is_checked'] = True
+            st.rerun()
+    with col_btn2:
+        if st.button("❌ 一键清空", type="secondary"):
+            for item_id in st.session_state.eval_results.keys():
+                st.session_state.eval_results[item_id]['is_checked'] = False
+            st.rerun()
 
     # 4. 评分详情（核心UI）
     st.subheader("评分详情")
@@ -433,7 +457,7 @@ def start_evaluation():
         st.success("评估记录已保存！")
         
         # 生成PDF
-        pdf_buffer = generate_pdf(saved_ev)
+        pdf_buffer = generate_pdf(evaluation_data)
         st.download_button(
             label="📄 下载PDF报告",
             data=pdf_buffer,
