@@ -9,8 +9,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-import tempfile
-import shutil
 
 # ==================== 页面配置 ====================
 st.set_page_config(
@@ -20,36 +18,23 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ==================== 字体配置 - 解决中文乱码问题 ====================
+# ==================== 字体配置 - 适配Streamlit Cloud（字体文件在根目录） ====================
 def setup_chinese_font():
-    """配置中文字体，解决PDF中文显示乱码问题"""
-    # 尝试查找系统中文字体，优先使用宋体
-    font_paths = [
-        "C:/Windows/Fonts/simsun.ttc",  # Windows 宋体
-        "/System/Library/Fonts/PingFang.ttc",  # Mac 苹方
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux 备用
-    ]
+    """配置中文字体（字体文件直接放在项目根目录）"""
+    # 字体文件路径（根目录下的SourceHanSansSC-Regular.otf）
+    font_path = os.path.join(os.path.dirname(__file__), "SourceHanSansSC-Regular.otf")
     
-    # 创建临时字体文件（避免权限问题）
-    temp_font_path = None
-    for font_path in font_paths:
-        if os.path.exists(font_path):
-            # 复制到临时文件
-            temp_dir = tempfile.mkdtemp()
-            temp_font_path = os.path.join(temp_dir, "simfang.ttf")
-            shutil.copy2(font_path, temp_font_path)
-            break
-    
-    # 如果找不到系统字体，使用ReportLab默认支持的字体替代
-    if temp_font_path and os.path.exists(temp_font_path):
-        pdfmetrics.registerFont(TTFont('Chinese', temp_font_path))
-        return 'Chinese'
+    # 检查字体文件是否存在
+    if os.path.exists(font_path):
+        # 注册中文字体
+        pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
+        return 'ChineseFont'
     else:
-        # 备用方案：使用支持中文的默认字体
-        pdfmetrics.registerFont(TTFont('Helvetica', 'Helvetica'))
+        # 备用方案（避免程序崩溃）
+        st.warning("未找到中文字体文件，PDF可能显示异常")
         return 'Helvetica'
 
-# 获取中文字体名称
+# 初始化中文字体
 CHINESE_FONT = setup_chinese_font()
 
 # ==================== 数据初始化 ====================
@@ -57,7 +42,7 @@ DATA_DIR = "data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
-# ==================== 评分体系数据模型 (移除了分数显示，保留计算用分数) ====================
+# ==================== 评分体系数据模型 ====================
 class DataStore:
     def __init__(self):
         self.users = [{"id": 1, "username": "admin", "password": "admin123", "name": "管理员"}]
@@ -67,7 +52,7 @@ class DataStore:
         self.total_system_score = 177  # 总分177
 
     def _init_modules(self):
-        """核心评估项，仅在内部保留score用于计算，界面不显示"""
+        """核心评估项"""
         return {
             "纸样、样衣制作": {
                 "total_score": 14,
@@ -335,12 +320,11 @@ def start_evaluation():
         
         with st.expander(f"📦 {mod_name}", expanded=True):
             for sub_name, sub_mod in mod['sub_modules'].items():
-                # 小项标题：计算小项得分/总分177的百分比，移除"完成率"文字
+                # 小项标题：计算小项得分/总分177的百分比
                 sub_earned = sum(
                     item['score'] for item in sub_mod['items']
                     if st.session_state.eval_results[item['id']]['is_checked']
                 )
-                # 关键修改1：百分比 = 小项得分 / 总分177 * 100，移除"完成率"文字
                 sub_percent = (sub_earned / db.total_system_score * 100) if db.total_system_score > 0 else 0
                 st.markdown(f"### {sub_name} ({sub_percent:.2f}%)")
                 st.divider()
@@ -348,12 +332,12 @@ def start_evaluation():
                 # 遍历每个检查项
                 for item in sub_mod['items']:
                     item_id = item['id']
-                    # 关键修改2：重点项（is_key=True）字体显示为橙色
+                    # 重点项字体显示为橙色
                     item_label = item['name']
                     if item.get('is_key', False):
                         item_label = f":orange[{item_label}]"
                     
-                    # 勾选框：显示处理后的标签（重点项橙色）
+                    # 勾选框
                     is_checked = st.checkbox(
                         item_label,
                         key=f"chk_{item_id}",
@@ -364,7 +348,7 @@ def start_evaluation():
                     st.session_state.eval_results[item_id]['is_checked'] = is_checked
                     mod_earned += item['score'] if is_checked else 0
 
-                    # 细化选项和Comment放在勾选框正下方
+                    # 细化选项和Comment
                     if not is_checked:
                         col_detail, col_comment = st.columns([1, 2])
                         with col_detail:
@@ -382,7 +366,7 @@ def start_evaluation():
                             if item['comment']:
                                 st.info(f"改进建议：{item['comment']}")
                     
-                    # 每个检查项之间增加间距
+                    # 间距
                     st.markdown("")
 
         total_earned += mod_earned
@@ -390,7 +374,6 @@ def start_evaluation():
     # 5. 评估总结与评论
     st.subheader("评估总结")
     overall_percent = (total_earned / db.total_system_score * 100) if db.total_system_score > 0 else 0
-    # 修改整体显示，移除"完成率"文字
     st.metric("整体评分占比", f"{overall_percent:.2f}%")
     comments = st.text_area("评估评论", height=100, placeholder="请输入本次评估的总体评价或整改要求...")
 
@@ -433,7 +416,6 @@ def show_history():
         with st.expander(f"📅 {ev['eval_date']} | {factory_name} | {ev['eval_type']}"):
             col1, col2, col3 = st.columns([2,2,1])
             with col1: st.write(f"**评估人**：{ev['evaluator']}")
-            # 修改历史记录显示，移除"完成率"文字
             with col2: st.write(f"**整体评分占比**：{ev['overall_percent']:.2f}%")
             with col3:
                 pdf_buffer = generate_pdf(ev)
