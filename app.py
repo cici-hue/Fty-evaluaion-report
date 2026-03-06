@@ -704,24 +704,39 @@ def start_evaluation():
         
     comments = st.text_area("综合评估意见", height=80)
 
-    # 假设这是您点击按钮后的处理部分
-    if st.button("💾 保存并生成报告"):
-        # 1. 这里执行您的数据保存逻辑
-        success = save_data_to_db(st.session_state.data) 
-        
-        if success:
-            st.success("数据已保存！正在生成报告文件...")
-            
-            # 2. 调用生成 PDF/Excel 的函数（这里需要您根据实际工具编写，如 ReportLab 或 FPDF）
-            report_pdf = generate_pdf_report(st.session_state.data)
-            
-            # 3. 关键步骤：显示下载按钮
-            st.download_button(
-                label="📥 点击下载评估报告 (PDF)",
-                data=report_pdf,
-                file_name=f"工厂评估报告_{st.session_state.factory_name}.pdf",
-                mime="application/pdf"
-            )
+     if st.button("保存并生成报告", type="primary"):
+
+        ev_data = {
+
+            "factory_id": factory_id,
+
+            "evaluator": evaluator,
+
+            "eval_date": eval_date.strftime("%Y-%m-%d"),
+
+            "eval_type": eval_type,
+
+            "selected_modules": selected_modules,
+
+            "overall_percent": overall_percent,
+
+            "results": st.session_state.eval_results,
+
+            "comments": comments
+
+        }
+
+        saved = db.add_evaluation(ev_data)
+
+        st.success("保存成功！")
+
+        pdf_buf = generate_pdf(saved)
+
+        st.download_button("📥 下载PDF", pdf_buf, f"评估报告_{saved['id']}.pdf")
+
+
+
+        del st.session_state.eval_results
 # ==================== 历史记录 ====================
 def show_history():
     st.subheader("历史记录")
