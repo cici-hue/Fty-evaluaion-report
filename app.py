@@ -575,23 +575,30 @@ def start_evaluation():
                 if it['id'] not in st.session_state.eval_results:
                     st.session_state.eval_results[it['id']] = {"is_checked": False, "details": [], "image_path": None}
 
-   # —————— 视觉优化：一键全选 / 清空 移至右上角 ——————
-    # 创建 4 列，前 3 列为空（占位），第 4 列放小按钮
-    col_space, col_btns = st.columns([7, 2]) 
-    
+   # 3. 在右上角放置“微型”全选/清空按钮
+    st.markdown("<br>", unsafe_allow_html=True) # 稍微顶开一点间距
+    col_space, col_btns = st.columns([8, 2]) 
     with col_btns:
-        # 使用内联布局小按钮
-        sub_col1, sub_col2 = st.columns(2)
-        with sub_col1:
-            if st.button("全选", key="btn_all", help="一键勾选当前所有项目", use_container_width=True):
-                for it_id in all_item_ids:
-                    st.session_state.eval_results[it_id]["is_checked"] = True
-                st.rerun()
-        with sub_col2:
-            if st.button("清空", key="btn_none", help="取消勾选当前所有项目", use_container_width=True):
-                for it_id in all_item_ids:
-                    st.session_state.eval_results[it_id]["is_checked"] = False
-                st.rerun()
+        sub_c1, sub_c2 = st.columns(2)
+        # 使用小的 font-size 覆盖样式
+        st.markdown("""
+            <style>
+            button[kind="secondary"] {
+                padding: 1px 1px !important;
+                font-size: 10px !important;
+                height: 24px !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        if sub_c1.button("全选", key="small_all"):
+            for it_id in all_item_ids:
+                st.session_state.eval_results[it_id]["is_checked"] = True
+            st.rerun()
+        if sub_c2.button("清空", key="small_none"):
+            for it_id in all_item_ids:
+                st.session_state.eval_results[it_id]["is_checked"] = False
+            st.rerun()
 
     # 添加自定义 CSS 使这部分按钮变小且靠上
     st.markdown("""
