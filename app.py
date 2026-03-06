@@ -57,11 +57,38 @@ if not os.path.exists(MEDIA_DIR):
 # ==================== 评分体系数据模型 ====================
 class DataStore:
     def __init__(self):
-        self.users = [{"id": 1, "username": "admin", "password": "admin123", "name": "管理员"}]
+        self.users = self._load_users_from_csv()
         self.factories = [{"id": 1, "name": "深圳XX服装厂"}, {"id": 2, "name": "广州XX制衣厂"}]
         self.modules = self._init_modules()
         self.evaluations = self._load_evaluations()
         self.total_system_score = 177
+   
+    def _load_users_from_csv(self):
+        # 自动根据你的 Book1.csv 生成用户字典
+        # 格式：{ "email": {"name": "Martin Zhang", "role": "user", "pwd": "email123"} }
+        try:
+            df = pd.read_csv("Book1.xlsx - Sheet1.csv")
+            user_dict = {}
+            for _, row in df.iterrows():
+                email = row['email'].strip()
+                user_dict[email] = {
+                    "name": row['name'],
+                    "role": "user",
+                    "password": f"{email}123"
+                }
+            # 手动添加管理员
+            user_dict["admin"] = {"name": "管理员", "role": "admin", "password": "admin123"}
+            user_dict["sadmin"] = {"name": "高级管理员", "role": "sadmin", "password": "sadmin123"}
+            return user_dict
+        except:
+            st.error("无法加载评估员列表文件")
+            return {}
+
+    def get_evaluations_by_user(self, user_email, role):
+        # 核心过滤逻辑：如果是 user，只返回 evaluator == user_email 的数据
+        if role in ["admin", "sadmin"]:
+            return self.evaluations
+        return [e for e in self.evaluations if e.get('evaluator_id') == user_email]
    
     def get_item_score(self, item_id):
         """根据ID在配置中查找该项对应的原始分值"""
@@ -768,7 +795,7 @@ def show_data_analysis():
         return
 
     # 转换为 DataFrame
-    df = pd.DataFrame(evals)
+    df = pd.DataFrame(evals_to_show)
     df['eval_date'] = pd.to_datetime(df['eval_date'])
     factory_map = {f['id']: f['name'] for f in db.factories}
 
@@ -858,6 +885,32 @@ def show_data_analysis():
     st.dataframe(pd.DataFrame(item_analysis), column_config={
         "合格率": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100)
     }, use_container_width=True)
+    
+# ==================== 登录界面管理 ====================
+def login():
+    st.set_page_config(page_title="欧图工厂生产流程审核系统", layout="wide")
+    
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+
+    if not st.session_state.logged_in:
+        with st.container():
+            st.title("🔒 质量评估系统登录")
+            user_input = st.text_input("账号 (邮箱)")
+            pwd_input = st.text_input("密码", type="password")
+            
+            if st.button("登录", type="primary"):
+                users = db.users
+                if user_input in users and users[user_input]['password'] == pwd_input:
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = user_input
+                    st.session_state.user_name = users[user_input]['name']
+                    st.session_state.role = users[user_input]['role']
+                    st.success(f"欢迎回来, {st.session_state.user_name}!")
+                    st.rerun()
+                else:
+                    st.error("账号或密码错误")
+        st.stop() # 未登录则停止运行后续代码
 
 # ==================== 历史记录 ====================
 def show_history():
@@ -875,6 +928,46 @@ def show_history():
                 pdf_buf = generate_pdf(ev)
                 st.download_button("下载报告", pdf_buf, f"报告_{ev['id']}.pdf", key=f"dl{ev['id']}")
             st.write(f"评论：{ev['comments']}")
+
+def main():
+    login() # 1. 拦截未登录用户
+    
+    # 2. 登录成功后，显示侧边栏信息
+    st.sidebar.title(f"👤 {st.session_state.user_name}")
+    st.sidebar.caption(f"角色: {st.session_state.role.upper()}")
+    
+    # 3. 动态菜单
+    menu = ["开始评估", "数据分析", "历史记录"]
+    if st.session_state.role == "sadmin":
+        menu.append("⚙️ 系统管理")
+    
+    choice = st.sidebar.selectbox("功能导航", menu)
+    
+    # 4. 获取当前用户权限范围内的数据
+    filtered_evals = db.get_evaluations_by_user(st.session_state.user_id, st.session_state.role)
+
+    # 5. 路由分发
+    if choice == "开始评估":
+        # 传递当前登录 ID 进去，以便保存评估时知道是谁做的
+        start_evaluation(st.session_state.user_id) 
+        
+    elif choice == "数据分析":
+        # 传入过滤后的数据给分析函数
+        show_data_analysis(filtered_evals)
+        
+    elif choice == "历史记录":
+        # 传入过滤后的数据给历史记录函数
+        show_history(filtered_evals)
+
+    elif choice == "⚙️ 系统管理":
+        st.write("这里是高级管理员管理工厂和人员的面板")
+        # show_admin_panel() 
+
+    # 6. 退出按钮
+    st.sidebar.divider()
+    if st.sidebar.button("退出登录"):
+        st.session_state.clear() # 清空所有状态
+        st.rerun()
 
 if __name__ == "__main__":
     main()
