@@ -14,7 +14,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 # ==================== 页面配置 ====================
 st.set_page_config(
-    page_title="工厂流程审核评分系统",
+    page_title="欧图工厂生产流程审核系统",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
