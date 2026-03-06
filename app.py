@@ -20,32 +20,17 @@ st.set_page_config(
 
 @st.dialog("查看原图")
 def show_full_image(image_path):
-    """在对话框中显示原图"""
     st.image(image_path, use_container_width=True)
 
-# ==================== 辅助功能：注入自定义 CSS ====================
 def inject_custom_css():
-    """优化上传组件样式，隐藏丑陋的拖拽框文字"""
     st.markdown("""
         <style>
-        /* 隐藏上传框中间的拖拽文字和图标 */
-        [data-testid="stFileUploadDropzone"] div div {
-            display: none !important;
-        }
-        /* 极大压缩上传区域高度 */
-        [data-testid="stFileUploadDropzone"] {
-            padding: 0px !important;
-            min-height: 45px !important;
-            border: 1px dashed #ccc;
-        }
-        /* 按钮宽度自适应 */
-        .stPopover [data-testid="stBaseButton-secondary"] {
-            width: 100%;
-        }
-        /* 紧凑列表间距 */
-        [data-testid="stVerticalBlock"] {
-            gap: 0.5rem !important;
-        }
+        [data-testid="stFileUploadDropzone"] div div { display: none !important; }
+        [data-testid="stFileUploadDropzone"] { padding: 0px !important; min-height: 45px !important; border: 1px dashed #ccc; }
+        .stPopover [data-testid="stBaseButton-secondary"] { width: 100%; }
+        /* 紧凑型布局调整 */
+        [data-testid="stExpander"] [data-testid="stVerticalBlock"] { gap: 0.2rem !important; }
+        hr { margin: 0.4rem 0 !important; }
         </style>
     """, unsafe_allow_html=True)
     
@@ -321,7 +306,7 @@ def main():
 # ==================== 核心评估页面（一键全选/清空 修复版） ====================
 # ==================== 核心评估页面（优化版：拍照/缩略图/大图） ====================
 def start_evaluation():
-    inject_custom_css()  # 注入样式
+    inject_custom_css()
     st.subheader("工厂流程评估")
 
     # --- 1. 基础信息配置 ---
@@ -335,7 +320,6 @@ def start_evaluation():
     with col4:
         eval_type = st.selectbox("审核性质", ["常规审核", "整改复查"])
 
-    # --- 2. 模块筛选 ---
     all_modules = list(db.modules.keys())
     selected_modules = all_modules if eval_type == "常规审核" else st.multiselect("选择复查模块", all_modules)
     
@@ -343,7 +327,7 @@ def start_evaluation():
         st.info("请选择上方模块开始评分")
         return
 
-    # --- 3. 初始化状态与一键操作 ---
+    # --- 2. 状态初始化 ---
     all_item_ids = []
     for mod_name in selected_modules:
         for sub_mod in db.modules[mod_name]['sub_modules'].values():
@@ -357,6 +341,7 @@ def start_evaluation():
         if it_id not in st.session_state.eval_results:
             st.session_state.eval_results[it_id] = {"is_checked": False, "details": [], "image_path": None}
 
+    # 一键操作
     col_a, col_b, _ = st.columns([1, 1, 6])
     with col_a:
         if st.button("✅ 一键全选"):
@@ -373,85 +358,94 @@ def start_evaluation():
 
     st.divider()
 
-    # --- 4. 评分详情循环 ---
-    total_earned = 0
+    # --- 3. 核心评分循环（即时百分比逻辑） ---
+    total_system_earned = 0
+
     for mod_name in selected_modules:
-        mod = db.modules[mod_name]
-        with st.expander(f"📦 {mod_name} (模块总分: {mod['total_score']})", expanded=True):
-            for sub_name, sub_mod in mod['sub_modules'].items():
-                st.markdown(f"**🔹 {sub_name}**")
-                
-                for it in sub_mod['items']:
-                    it_id = it['id']
-                    
-                    # 布局：c1 复选框+分值, c2 拍照按钮, c3 预览区
-                    c1, c2, c3 = st.columns([0.65, 0.2, 0.15])
-                    
-                    with c1:
-                        # 4.1 构造标题标签（包含分值显示与橙色关键项）
-                        score_text = f" ({it['score']}分)"
-                        if it.get('is_key'):
-                            # 修复：关键项三个字也设为橙色
-                            label = f":orange[{it['name']} (关键项)]{score_text}"
-                        else:
-                            label = f"{it['name']}{score_text}"
+        mod_data = db.modules[mod_name]
+        
+        # A. 计算该模块的即时得分
+        mod_earned = 0
+        mod_possible = mod_data['total_score']
+        for sub in mod_data['sub_modules'].values():
+            for it in sub['items']:
+                if st.session_state.get(f"chk_{it['id']}", False):
+                    mod_earned += it['score']
+        
+        mod_percent = (mod_earned / mod_possible * 100) if mod_possible > 0 else 0
+        total_system_earned += mod_earned
+
+        # B. 渲染模块级收起框
+        with st.expander(f"📦 {mod_name} (得分率: {mod_percent:.1f}%)", expanded=True):
+            
+            for sub_name, sub_mod in mod_data['sub_modules'].items():
+                # C. 计算子项的即时得分
+                sub_earned = sum(it['score'] for it in sub_mod['items'] if st.session_state.get(f"chk_{it['id']}", False))
+                sub_possible = sum(it['score'] for it in sub_mod['items'])
+                sub_percent = (sub_earned / sub_possible * 100) if sub_possible > 0 else 0
+
+                # D. 渲染子项级收起框 (新增功能：子项也可收起)
+                with st.expander(f"🔹 {sub_name} (完成度: {sub_percent:.1f}%)", expanded=False):
+                    for it in sub_mod['items']:
+                        it_id = it['id']
+                        c1, c2, c3 = st.columns([0.65, 0.2, 0.15])
                         
-                        is_checked = st.checkbox(label, key=f"chk_{it_id}")
-                        st.session_state.eval_results[it_id]['is_checked'] = is_checked
-                        total_earned += it['score'] if is_checked else 0
+                        with c1:
+                            # 关键项及文字颜色处理 (不显示单项分数)
+                            label = f":orange[{it['name']} (关键项)]" if it.get('is_key') else it['name']
+                            is_checked = st.checkbox(label, key=f"chk_{it_id}")
+                            st.session_state.eval_results[it_id]['is_checked'] = is_checked
 
-                    with c2:
-                        # 4.2 极简拍照气泡
-                        with st.popover("📸 拍照上传"):
-                            img_file = st.file_uploader("拍照", type=['jpg','png','jpeg'], key=f"up_{it_id}", label_visibility="collapsed")
-                            if img_file:
-                                file_ext = img_file.name.split('.')[-1]
-                                file_name = f"{it_id}_{datetime.now().strftime('%H%M%S')}.{file_ext}"
-                                save_path = os.path.join(MEDIA_DIR, file_name)
-                                with open(save_path, "wb") as f:
-                                    f.write(img_file.getbuffer())
-                                st.session_state.eval_results[it_id]['image_path'] = save_path
-                                st.rerun()
-
-                    with c3:
-                        # 4.3 缩略图及删除/查看
-                        img_path = st.session_state.eval_results[it_id].get('image_path')
-                        if img_path and os.path.exists(img_path):
-                            st.image(img_path, width=45)
-                            sub_c1, sub_c2 = st.columns(2)
-                            with sub_c1:
-                                if st.button("👁️", key=f"v_{it_id}", help="大图"):
-                                    show_full_image(img_path)
-                            with sub_c2:
-                                if st.button("🗑️", key=f"d_{it_id}", help="删除"):
-                                    if os.path.exists(img_path): os.remove(img_path)
-                                    st.session_state.eval_results[it_id]['image_path'] = None
+                        with c2:
+                            # 拍照上传气泡
+                            with st.popover("📸 拍照上传"):
+                                img_file = st.file_uploader("拍照", type=['jpg','png','jpeg'], key=f"up_{it_id}", label_visibility="collapsed")
+                                if img_file:
+                                    file_ext = img_file.name.split('.')[-1]
+                                    file_name = f"{it_id}_{datetime.now().strftime('%H%M%S')}.{file_ext}"
+                                    save_path = os.path.join(MEDIA_DIR, file_name)
+                                    with open(save_path, "wb") as f:
+                                        f.write(img_file.getbuffer())
+                                    st.session_state.eval_results[it_id]['image_path'] = save_path
                                     st.rerun()
 
-                    # 4.4 不符合项的详情录入
-                    if not is_checked:
-                        if it['details']:
-                            st.session_state.eval_results[it_id]['details'] = st.multiselect(
-                                "具体缺陷", it['details'],
-                                default=st.session_state.eval_results[it_id]['details'],
-                                key=f"det_{it_id}", label_visibility="collapsed"
-                            )
-                        if it['comment']:
-                            st.caption(f"💡 建议：{it['comment']}")
-                    
-                    st.divider()
+                        with c3:
+                            # 预览/大图/删除
+                            img_path = st.session_state.eval_results[it_id].get('image_path')
+                            if img_path and os.path.exists(img_path):
+                                st.image(img_path, width=40)
+                                sc1, sc2 = st.columns(2)
+                                with sc1:
+                                    if st.button("👁️", key=f"v_{it_id}"): show_full_image(img_path)
+                                with sc2:
+                                    if st.button("🗑️", key=f"d_{it_id}"):
+                                        if os.path.exists(img_path): os.remove(img_path)
+                                        st.session_state.eval_results[it_id]['image_path'] = None
+                                        st.rerun()
 
-    # --- 5. 结果提交 ---
+                        # 不符合项录入
+                        if not is_checked:
+                            if it['details']:
+                                st.session_state.eval_results[it_id]['details'] = st.multiselect(
+                                    "缺陷选择", it['details'],
+                                    default=st.session_state.eval_results[it_id]['details'],
+                                    key=f"det_{it_id}", label_visibility="collapsed"
+                                )
+                            if it['comment']:
+                                st.caption(f"💡 建议：{it['comment']}")
+                        st.divider()
+
+    # --- 4. 总结与保存 ---
     st.subheader("评估汇总")
-    overall_percent = (total_earned / db.total_system_score * 100) if db.total_system_score else 0
+    overall_percent = (total_system_earned / db.total_system_score * 100) if db.total_system_score else 0
     
     col_score, col_save = st.columns([1, 1])
     with col_score:
-        st.metric("最终得分占比", f"{overall_percent:.2f}%")
+        st.metric("系统总得分率", f"{overall_percent:.2f}%")
     
-    comments = st.text_area("综合评估意见", height=100)
+    comments = st.text_area("综合评估意见", height=80)
 
-    if st.button("💾 提交评估并保存报告", type="primary", use_container_width=True):
+    if st.button("💾 提交并生成报告", type="primary", use_container_width=True):
         ev_data = {
             "factory_id": factory_id,
             "evaluator": evaluator,
@@ -463,15 +457,9 @@ def start_evaluation():
             "comments": comments
         }
         saved = db.add_evaluation(ev_data)
-        st.success("评估已保存！")
-        
+        st.success("数据已存档")
         pdf_buf = generate_pdf(saved)
-        st.download_button(
-            "📥 下载 PDF 报告",
-            data=pdf_buf,
-            file_name=f"审核报告_{saved['eval_date']}.pdf",
-            mime="application/pdf"
-        )
+        st.download_button("📥 下载PDF", data=pdf_buf, file_name=f"Report_{saved['eval_date']}.pdf")
 # ==================== 历史记录 ====================
 def show_history():
     st.subheader("历史记录")
