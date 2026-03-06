@@ -71,22 +71,36 @@ class DataStore:
 
     def verify_user(self, email, password):
         """
-        核心验证逻辑：从 Streamlit Secrets 读取数据
+        终极验证逻辑
         """
-        # A. 验证管理员 (从 secrets 的 [passwords] 部分读取)
-        admin_pwds = st.secrets.get("passwords", {})
-        if email in admin_pwds:
-            if password == admin_pwds[email]:
-                role_name = "高级管理员" if email == "sadmin" else "管理员"
-                return {"name": role_name, "role": email}
+        # 1. 预处理：去掉首尾空格，全部转为小写来对比
+        input_id = email.strip().lower()
+        input_pwd = password.strip()
         
-        # B. 验证普通评估员 (从 secrets 的 [evaluators] 部分读取)
+        # 2. 验证管理员 (admin/sadmin)
+        admin_pwds = st.secrets.get("passwords", {})
+        # 将管理员账号也转小写对比
+        admin_dict_lower = {str(k).lower(): str(v) for k, v in admin_pwds.items()}
+        
+        if input_id in admin_dict_lower:
+            if input_pwd == admin_dict_lower[input_id]:
+                role_name = "高级管理员" if input_id == "sadmin" else "管理员"
+                return {"name": role_name, "role": input_id}
+        
+        # 3. 验证评估员
         evaluators = st.secrets.get("evaluators", {})
-        if email in evaluators:
-            # 规则：密码是 账号 + 123
-            correct_pwd = f"{email}123"
-            if password == correct_pwd:
-                return {"name": evaluators[email], "role": "user"}
+        # 将 Secrets 里的评估员 Email 全部转为小写
+        eval_dict_lower = {str(k).lower(): str(v) for k, v in evaluators.items()}
+        
+        if input_id in eval_dict_lower:
+            # 这里的规则：用你【原始输入】的账号（不带 strip/lower）拼接 123 
+            # 还是用【处理后】的账号？
+            # 建议用处理后的，最稳妥：
+            expected_pwd = f"{input_id}123"
+            
+            # 如果还是不行，试试直接打印出期望的密码在后台日志里 (Streamlit Cloud 右下角 Manage app 可看)
+            if input_pwd == expected_pwd:
+                return {"name": eval_dict_lower[input_id], "role": "user"}
         
         return None
 
