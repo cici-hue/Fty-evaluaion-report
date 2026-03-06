@@ -61,7 +61,7 @@ class DataStore:
         self.evaluations = self._load_evaluations()
         self.total_system_score = 177
 
-   def _init_modules(self):
+    def _init_modules(self):
         return {
             "纸样、样衣制作": {
                 "sub_modules": {
