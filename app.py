@@ -975,7 +975,7 @@ def main():
     elif "历史记录" in choice:
         show_history(filtered_evals)
     elif "系统管理" in choice:
-        show_admin_panel() 
+        show_admin_panel(evals_to_show) 
 
     # 7. 退出登录
     if st.sidebar.button("🚪 退出登录", use_container_width=True):
