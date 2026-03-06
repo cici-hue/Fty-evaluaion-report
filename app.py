@@ -549,12 +549,9 @@ def start_evaluation():
     # 【新增功能：整改复查对比逻辑】
     last_ev = None
     if eval_type == "整改复查":
-        # 筛选该工厂之前的评估记录并按时间倒序
         past_evals = [e for e in db.evaluations if e['factory_id'] == factory_id]
         if past_evals:
-            # 获取最近的一条记录
             last_ev = sorted(past_evals, key=lambda x: x['eval_date'], reverse=True)[0]
-            # st.warning(f"🔄 已载入对比模式：正在对比该工厂上一次评估 ({last_ev['eval_date']}) 的表现")
         else:
             st.info("该工厂暂无历史评估记录，将以常规模式进行。")
 
@@ -565,58 +562,52 @@ def start_evaluation():
         st.info("请选择上方模块开始评分")
         return
 
-    # --- 2. 状态初始化 ---
+    # --- 2. 状态初始化 & 提取所有 ID ---
     if 'eval_results' not in st.session_state:
         st.session_state.eval_results = {}
     
+    # 修复点：定义 all_item_ids 用于全选功能
+    all_item_ids = []
     for mod_name in selected_modules:
         for sub_mod in db.modules[mod_name]['sub_modules'].values():
             for it in sub_mod['items']:
-                if it['id'] not in st.session_state.eval_results:
-                    st.session_state.eval_results[it['id']] = {"is_checked": False, "details": [], "image_path": None}
+                it_id = it['id']
+                all_item_ids.append(it_id) # 收集所有 ID
+                if it_id not in st.session_state.eval_results:
+                    st.session_state.eval_results[it_id] = {"is_checked": False, "details": [], "image_path": None}
 
-   # 3. 在右上角放置“微型”全选/清空按钮
-    st.markdown("<br>", unsafe_allow_html=True) # 稍微顶开一点间距
-    col_space, col_btns = st.columns([8, 2]) 
+    # --- 3. 右上角微型按钮 (全选/清空) ---
+    # 使用 st.columns 强行将按钮推到最右边
+    col_space, col_btns = st.columns([8.2, 1.8]) 
     with col_btns:
         sub_c1, sub_c2 = st.columns(2)
-        # 使用小的 font-size 覆盖样式
+        # CSS 强制微调：让按钮变得更小、字体更细、高度更矮
         st.markdown("""
             <style>
-            button[kind="secondary"] {
-                padding: 1px 1px !important;
-                font-size: 10px !important;
-                height: 24px !important;
+            div[data-testid="stColumn"] button {
+                padding: 1px 2px !important;
+                font-size: 11px !important;
+                height: 22px !important;
+                min-height: 22px !important;
+                line-height: 1 !important;
             }
             </style>
         """, unsafe_allow_html=True)
         
         if sub_c1.button("全选", key="small_all"):
             for it_id in all_item_ids:
+                st.session_state[f"chk_{it_id}"] = True # 必须同步更新 checkbox 的 key
                 st.session_state.eval_results[it_id]["is_checked"] = True
             st.rerun()
         if sub_c2.button("清空", key="small_none"):
             for it_id in all_item_ids:
+                st.session_state[f"chk_{it_id}"] = False
                 st.session_state.eval_results[it_id]["is_checked"] = False
             st.rerun()
 
-    # 添加自定义 CSS 使这部分按钮变小且靠上
-    st.markdown("""
-        <style>
-        /* 针对这两个小按钮的样式微调 */
-        div[data-testid="stColumn"] > div > div > div > button {
-            padding: 2px 5px !important;
-            font-size: 12px !important;
-            height: auto !important;
-            min-height: 25px !important;
-            line-height: 1.2 !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
     st.divider()
 
-    # --- 3. 核心评分循环 ---
+    # --- 4. 核心评分循环 ---
     total_system_earned = 0
 
     for mod_name in selected_modules:
@@ -634,7 +625,6 @@ def start_evaluation():
         # 【计算上一次模块得分】
         last_mod_info = ""
         if last_ev:
-            # 找到上次该模块涉及的所有子项并求和
             last_mod_earned = 0
             for s_name, s_data in mod_data['sub_modules'].items():
                 last_mod_earned += sum(it['score'] for it in s_data['items'] if last_ev['results'].get(it['id'], {}).get('is_checked', False))
@@ -672,8 +662,8 @@ def start_evaluation():
 
                         with c1:
                             label = f":orange[{it['name']} (关键项)]" if it.get('is_key') else it['name']
-                            # 在 Label 后面增加上次状态提示
                             full_label = f"{label}{last_item_status}"
+                            # 关键修复：checkbox 直接关联其 key
                             is_checked = st.checkbox(full_label, key=f"chk_{it_id}")
                             st.session_state.eval_results[it_id]['is_checked'] = is_checked
 
@@ -713,11 +703,10 @@ def start_evaluation():
                                 st.caption(f"💡 建议：{it['comment']}")
                         st.divider()
 
-    # --- 4. 总结区 ---
+    # --- 5. 总结区 ---
     st.subheader("评估汇总")
     overall_percent = (total_system_earned / SYSTEM_TOTAL_FIXED * 100)
     
-    # 汇总处的对比
     if last_ev:
         st.metric("总得分率", f"{overall_percent:.2f}%", delta=f"{overall_percent - last_ev['overall_percent']:.2f}%")
     else:
@@ -726,7 +715,6 @@ def start_evaluation():
     comments = st.text_area("综合评估意见", height=80)
 
     if st.button("保存并生成报告", type="primary"):
-        # 1. 构造评估数据对象
         ev_data = {
             "factory_id": factory_id,
             "evaluator": evaluator,
@@ -737,27 +725,14 @@ def start_evaluation():
             "results": st.session_state.eval_results,
             "comments": comments
         }
-        
-        # 2. 调用 DataStore 类中的 add_evaluation 方法
-        # 这个方法内部会自动执行 self._save_evaluations() 将数据写入 evaluations.json
         saved_record = db.add_evaluation(ev_data) 
-        
-        # st.success(f"✅ 评估数据已成功保存至 {DATA_DIR}/evaluations.json")
-
-        # 3. 立即生成 PDF 文件流
-        # generate_pdf 函数会返回一个 BytesIO 内存流
         pdf_buf = generate_pdf(saved_record) 
-        
-        # 4. 显示下载按钮
         st.download_button(
             label="📥 下载评估报告 (PDF)",
             data=pdf_buf,
             file_name=f"工厂评估报告_{saved_record['id']}_{eval_date}.pdf",
             mime="application/pdf"
         )
-
-        # 5. 清理状态（可选，如果你希望下载完后重置界面）
-        del st.session_state.eval_results
 # ==================== 历史记录 ====================
 def show_history():
     st.subheader("历史记录")
