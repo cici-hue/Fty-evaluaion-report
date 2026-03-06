@@ -906,7 +906,7 @@ def login():
 
     if not st.session_state.logged_in:
         st.title("🔒 质量评估系统登录")
-        user_input = st.text_input("账号 (Email/Admin)")
+        user_input = st.text_input("账号 (Email)")
         pwd_input = st.text_input("密码", type="password")
         
         if st.button("登录", type="primary"):
@@ -951,27 +951,29 @@ def main():
     if st.session_state.role == "sadmin":
         menu.append("⚙️ 系统管理")
     
-    choice = st.sidebar.selectbox("功能导航", menu)
-    
-    # 4. 获取当前用户权限范围内的数据
+    # 将 selectbox 改为 radio，它会直接平铺显示所有选项
+    choice = st.sidebar.radio(
+        "功能导航", 
+        options=menu_options,
+        index=0  # 默认选中第一个
+    )
+    # ----------------------
+
+    st.sidebar.divider() # 下方再加一条线
+
+    # 3. 获取数据
     filtered_evals = db.get_evaluations_by_user(st.session_state.user_id, st.session_state.role)
 
-    # 5. 路由分发
-    if choice == "开始评估":
-        # 传递当前登录 ID 进去，以便保存评估时知道是谁做的
+    # 4. 路由分发 (注意去除图标匹配字符串，或者直接用 index 判断)
+    # 如果你在 menu_options 里加了图标，判断时也要带上图标
+    if "开始评估" in choice:
         start_evaluation(st.session_state.user_id) 
-        
-    elif choice == "数据分析":
-        # 传入过滤后的数据给分析函数
+    elif "数据分析" in choice:
         show_data_analysis(filtered_evals)
-        
-    elif choice == "历史记录":
-        # 传入过滤后的数据给历史记录函数
+    elif "历史记录" in choice:
         show_history(filtered_evals)
-
-    elif choice == "⚙️ 系统管理":
-        st.write("这里是高级管理员管理工厂和人员的面板")
-        # show_admin_panel() 
+    elif "系统管理" in choice:
+        show_admin_panel()
 
     # 6. 退出按钮
     st.sidebar.divider()
