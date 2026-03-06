@@ -271,7 +271,7 @@ def generate_pdf(evaluation):
 # ==================== 页面路由 ====================
 def main():
     if 'user' not in st.session_state:
-        st.title("工厂流程审核评分系统")
+        st.title("欧图工厂生产流程审核系统")
         col1, col2, col3 = st.columns([1,2,1])
         with col2:
             username = st.text_input("用户名")
@@ -305,7 +305,7 @@ def main():
 # ==================== 核心评估页面（优化版：拍照/缩略图/大图） ====================
 def start_evaluation():
     inject_custom_css()
-    st.subheader("工厂流程评估")
+    st.subheader("欢迎回来，评估员")
 
     # 定义系统固定总分分母
     SYSTEM_TOTAL_FIXED = 177
@@ -375,7 +375,7 @@ def start_evaluation():
         total_system_earned += mod_earned
 
         # 模块层：静态标题，防止勾选后自动收起
-        with st.expander(f"📦：{mod_name}", expanded=True):
+        with st.expander(f"📦{mod_name}", expanded=True):
             # 仅显示百分比
             st.write(f"**模块得分: :blue[{mod_score_percent:.1f}%]**")
             
