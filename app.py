@@ -307,6 +307,9 @@ def start_evaluation():
     inject_custom_css()
     st.subheader("工厂流程评估")
 
+    # 定义系统固定总分
+    SYSTEM_TOTAL_FIXED = 177
+
     # --- 1. 基础配置 ---
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -325,7 +328,7 @@ def start_evaluation():
         st.info("请选择上方模块开始评分")
         return
 
-    # --- 2. 状态初始化 (不改动原有逻辑) ---
+    # --- 2. 状态初始化 ---
     if 'eval_results' not in st.session_state:
         st.session_state.eval_results = {}
     
@@ -335,7 +338,7 @@ def start_evaluation():
                 if it['id'] not in st.session_state.eval_results:
                     st.session_state.eval_results[it['id']] = {"is_checked": False, "details": [], "image_path": None}
 
-    # 一键操作
+    # 一键操作逻辑保持不变
     col_a, col_b, _ = st.columns([1, 1, 6])
     with col_a:
         if st.button("✅ 一键全选"):
@@ -362,50 +365,44 @@ def start_evaluation():
     for mod_name in selected_modules:
         mod_data = db.modules[mod_name]
         
-        # 计算模块级百分比
+        # 计算该模块实时得分
         mod_earned = 0
         for sub in mod_data['sub_modules'].values():
             mod_earned += sum(it['score'] for it in sub['items'] if st.session_state.get(f"chk_{it['id']}", False))
-        mod_percent = (mod_earned / mod_data['total_score'] * 100) if mod_data['total_score'] > 0 else 0
+        
+        mod_score_ratio = (mod_earned / SYSTEM_TOTAL_FIXED * 100)
         total_system_earned += mod_earned
 
-        # 模块层：标题静态化，防止刷新折叠
+        # 模块层：静态标题
         with st.expander(f"📦 模块：{mod_name}", expanded=True):
-            # 百分比内置到第一行，使用醒目的 Metric 或 Progress
-            c_m1, c_m2 = st.columns([0.3, 0.7])
-            c_m1.write(f"**模块得分率: :blue[{mod_percent:.1f}%]**")
-            c_m2.progress(mod_percent / 100)
+            # 内部第一行显示：模块得分 (当前模块分/177)
+            st.write(f"**模块得分: :blue[{mod_earned} / {SYSTEM_TOTAL_FIXED} ({mod_score_ratio:.1f}%)]**")
+            st.progress(min(mod_score_ratio / 100, 1.0))
             
             for sub_name, sub_mod in mod_data['sub_modules'].items():
-                # 计算子项级百分比
+                # 计算子项实时得分
                 sub_earned = sum(it['score'] for it in sub_mod['items'] if st.session_state.get(f"chk_{it['id']}", False))
-                sub_possible = sum(it['score'] for it in sub_mod['items'])
-                sub_percent = (sub_earned / sub_possible * 100) if sub_possible > 0 else 0
+                sub_score_ratio = (sub_earned / SYSTEM_TOTAL_FIXED * 100)
 
-                # 子项层：标题静态化 + 唯一 Key，彻底解决自动收起 Bug
+                # 子项层：使用固定 Key 保证状态持久
                 sub_key = f"exp_{factory_id}_{mod_name}_{sub_name}"
                 with st.expander(f"🔹 {sub_name}", expanded=False, key=sub_key):
-                    # 💡 百分比显示在这里！
-                    st.write(f"**当前子项完成度: :green[{sub_percent:.1f}%]**")
-                    st.progress(sub_percent / 100)
-                    st.write("") # 留点间距
+                    # 内部显示：子项得分 (当前子项分/177)
+                    st.write(f"**子项得分: :green[{sub_earned} / {SYSTEM_TOTAL_FIXED} ({sub_score_ratio:.1f}%)]**")
+                    st.progress(min(sub_score_ratio / 100, 1.0))
+                    st.write("") 
 
                     for it in sub_mod['items']:
                         it_id = it['id']
                         c1, c2, c3 = st.columns([0.65, 0.2, 0.15])
                         
                         with c1:
-                            # 1. 修正颜色：关键项文字及括号全橙色
-                            if it.get('is_key'):
-                                label = f":orange[{it['name']} (关键项)]"
-                            else:
-                                label = it['name']
-                            
+                            # 关键项全橙色
+                            label = f":orange[{it['name']} (关键项)]" if it.get('is_key') else it['name']
                             is_checked = st.checkbox(label, key=f"chk_{it_id}")
                             st.session_state.eval_results[it_id]['is_checked'] = is_checked
 
                         with c2:
-                            # 2. 拍照上传气泡
                             with st.popover("📸 拍照上传"):
                                 img_file = st.file_uploader("拍照", type=['jpg','png','jpeg'], key=f"up_{it_id}", label_visibility="collapsed")
                                 if img_file:
@@ -418,20 +415,18 @@ def start_evaluation():
                                     st.rerun()
 
                         with c3:
-                            # 3. 缩略图与删除按钮
                             img_path = st.session_state.eval_results[it_id].get('image_path')
                             if img_path and os.path.exists(img_path):
                                 st.image(img_path, width=40)
                                 sc1, sc2 = st.columns(2)
                                 with sc1:
-                                    if st.button("👁️", key=f"v_{it_id}", help="大图"): show_full_image(img_path)
+                                    if st.button("👁️", key=f"v_{it_id}"): show_full_image(img_path)
                                 with sc2:
-                                    if st.button("🗑️", key=f"d_{it_id}", help="删除"):
+                                    if st.button("🗑️", key=f"d_{it_id}"):
                                         if os.path.exists(img_path): os.remove(img_path)
                                         st.session_state.eval_results[it_id]['image_path'] = None
                                         st.rerun()
 
-                        # 不符合项详情
                         if not is_checked:
                             if it['details']:
                                 st.session_state.eval_results[it_id]['details'] = st.multiselect(
@@ -445,8 +440,8 @@ def start_evaluation():
 
     # --- 4. 总结区 ---
     st.subheader("评估汇总")
-    overall_percent = (total_system_earned / db.total_system_score * 100) if db.total_system_score else 0
-    st.metric("系统总得分率", f"{overall_percent:.2f}%")
+    overall_percent = (total_system_earned / SYSTEM_TOTAL_FIXED * 100)
+    st.metric("总得分率 (基于177分制)", f"{overall_percent:.2f}%", help="当前勾选项得分总和 / 177")
     comments = st.text_area("综合评估意见", height=80)
 
     if st.button("💾 保存并生成报告", type="primary", use_container_width=True):
@@ -456,8 +451,7 @@ def start_evaluation():
             "results": st.session_state.eval_results, "comments": comments
         }
         saved = db.add_evaluation(ev_data)
-        st.success("数据已成功保存！")
-        # 此处可添加 PDF 生成逻辑
+        st.success(f"评估已保存！总分：{total_system_earned} / {SYSTEM_TOTAL_FIXED}")
 # ==================== 历史记录 ====================
 def show_history():
     st.subheader("历史记录")
