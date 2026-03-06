@@ -922,6 +922,47 @@ def login():
                 st.error("❌ 账号或密码不正确")
         st.stop()
 
+def show_admin_panel():
+    st.header("⚙️ 系统管理 (SAdmin)")
+    
+    tab1, tab2, tab3 = st.tabs(["工厂管理", "记录维护", "系统配置"])
+    
+    with tab1:
+        st.subheader("编辑工厂名单")
+        # 直接在网页编辑工厂 ID 和名称
+        edited_factories = st.data_editor(db.factories, num_rows="dynamic", key="fty_editor")
+        if st.button("保存工厂修改"):
+            db.factories = edited_factories
+            # 如果你有保存工厂的函数，请在这里调用，例如 db.save_factories()
+            st.success("工厂列表已同步！")
+            
+    with tab2:
+        st.subheader("全量评估记录管理")
+        if not db.evaluations:
+            st.info("暂无记录")
+        else:
+            # 将记录转为 DataFrame 显示，增加删除列
+            admin_df = pd.DataFrame(db.evaluations)
+            st.write("当前系统中共有", len(admin_df), "条记录")
+            
+            # 允许选择某一条记录进行删除
+            delete_idx = st.number_input("输入要删除的记录索引 (Index)", min_value=0, max_value=len(db.evaluations)-1, step=1)
+            if st.button("🗑️ 删除该条记录", type="primary"):
+                target = db.evaluations[delete_idx]
+                db.evaluations.pop(delete_idx)
+                db.save_evaluations() # 确保存入 JSON
+                st.warning(f"已删除：{target.get('eval_date')} - {target.get('evaluator_id')} 的评估")
+                st.rerun()
+
+    with tab3:
+        st.subheader("危险操作")
+        if st.button("🚨 清空数据库", help="删除所有 JSON 里的评估记录"):
+            if st.checkbox("确认清空？"):
+                db.evaluations = []
+                db.save_evaluations()
+                st.success("数据已全部抹除")
+                st.rerun()
+
 # ==================== 历史记录 ====================
 def show_history(evals_to_show):
     st.subheader("历史记录")
@@ -975,7 +1016,7 @@ def main():
     elif "历史记录" in choice:
         show_history(filtered_evals)
     elif "系统管理" in choice:
-        show_admin_panel(evals_to_show) 
+        show_admin_panel() 
 
     # 7. 退出登录
     if st.sidebar.button("🚪 退出登录", use_container_width=True):
