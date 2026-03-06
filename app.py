@@ -777,13 +777,44 @@ def show_data_analysis():
                                  format_func=lambda x: factory_map[x])
     f_df = df[df['factory_id'] == selected_f_id].sort_values('eval_date')
 
-    # --- 图表 1：健康趋势图 ---
-    st.subheader("📈 工厂健康趋势 (近半年得分)")
+    # --- 第一部分：工厂健康趋势图 ---
+    st.subheader("📈 工厂健康趋势图")
     if not f_df.empty:
-        fig_line = px.line(f_df, x="评估日期", y="总分", markers=True,
-                          title=f"{factory_map[selected_f_id]} 得分趋势")
+        # 创建折线图
+        fig_line = px.line(
+            f_df, 
+            x='eval_date',           # X轴：评估日期
+            y='overall_percent',     # Y轴：分数(百分比)
+            title=f"{factory_map[selected_f_id]} - 质量波动趋势",
+            labels={
+                'overall_percent': '得分率 (%)', 
+                'eval_date': '评估日期'
+            },
+            markers=True,            # 显示数据点
+            line_shape='spline',     # 使曲线平滑
+            text=f_df['overall_percent'].apply(lambda x: f"{x:.1f}%") # 在点上显示数值
+        )
+
+        # 图表样式美化
+        fig_line.update_traces(
+            line_color='#1f77b4', 
+            line_width=3, 
+            marker=dict(size=10, symbol='circle'),
+            textposition="top center" # 数值显示在点上方
+        )
+        
+        # 强制 Y 轴范围在 0-100，避免因为分数太高或太低导致坐标轴变形
         fig_line.update_yaxes(range=[0, 105])
+        
+        # 优化 X 轴日期显示
+        fig_line.update_xaxes(
+            dtick="M1", # 强制按月显示刻度
+            tickformat="%Y-%m-%d" # 日期格式
+        )
+
         st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        st.warning("⚠️ 该工厂暂无评估记录，无法生成趋势图。")
 
     # --- 图表 2：模块画像雷达图 ---
     st.divider()
