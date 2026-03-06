@@ -604,12 +604,12 @@ def start_evaluation():
         # 使用容器包裹按钮以便精确定位
         with st.container():
             sub_c1, sub_c2 = st.columns(2)
-            if sub_c1.button("全选", key="small_all"):
+            if sub_c1.button("一键全选", key="small_all"):
                 for it_id in all_item_ids:
                     st.session_state[f"chk_{it_id}"] = True
                     st.session_state.eval_results[it_id]["is_checked"] = True
                 st.rerun()
-            if sub_c2.button("清空", key="small_none"):
+            if sub_c2.button("一键清空", key="small_none"):
                 for it_id in all_item_ids:
                     st.session_state[f"chk_{it_id}"] = False
                     st.session_state.eval_results[it_id]["is_checked"] = False
