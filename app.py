@@ -375,7 +375,7 @@ def start_evaluation():
         total_system_earned += mod_earned
 
         # 模块层：静态标题，防止勾选后自动收起
-        with st.expander(f"📦 模块：{mod_name}", expanded=True):
+        with st.expander(f"📦：{mod_name}", expanded=True):
             # 仅显示百分比
             st.write(f"**模块得分: :blue[{mod_score_percent:.1f}%]**")
             
