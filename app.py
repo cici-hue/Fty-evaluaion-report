@@ -78,7 +78,7 @@ class DataStore:
         input_pwd = password.strip()
         
         # 2. 验证管理员 (admin/sadmin)
-        admin_pwds = st.secrets.get("passwords", {})
+        admin_pwds = st.secrets.get("password", {})
         # 将管理员账号也转小写对比
         admin_dict_lower = {str(k).lower(): str(v) for k, v in admin_pwds.items()}
         
