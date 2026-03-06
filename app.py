@@ -940,32 +940,34 @@ def show_history(evals_to_show):
             st.write(f"评论：{ev['comments']}")
 
 def main():
-    login() # 1. 拦截未登录用户
+    login() # 1. 拦截未登录用户（如果没登录会执行 st.stop()）
     
-    # 2. 登录成功后，显示侧边栏信息
+    # 只有 login() 通过后，以下代码才会执行
+    # 2. 侧边栏页眉
     st.sidebar.title(f"👤 {st.session_state.user_name}")
-    st.sidebar.caption(f"角色: {st.session_state.role.upper()}")
+    st.sidebar.caption(f"权限: {st.session_state.role.upper()}")
+    st.sidebar.divider()
     
-    # 3. 动态菜单
-    menu = ["开始评估", "数据分析", "历史记录"]
+    # 3. 【核心修复点】先定义列表，再传给 radio
+    menu_options = ["🏠 开始评估", "📊 数据分析", "📜 历史记录"]
+    
+    # 根据角色追加权限
     if st.session_state.role == "sadmin":
-        menu.append("⚙️ 系统管理")
+        menu_options.append("⚙️ 系统管理")
     
-    # 将 selectbox 改为 radio，它会直接平铺显示所有选项
+    # 4. 现在调用 radio，menu_options 已经确定存在了
     choice = st.sidebar.radio(
         "功能导航", 
         options=menu_options,
-        index=0  # 默认选中第一个
+        index=0
     )
-    # ----------------------
 
-    st.sidebar.divider() # 下方再加一条线
+    st.sidebar.divider()
 
-    # 3. 获取数据
+    # 5. 获取过滤后的数据
     filtered_evals = db.get_evaluations_by_user(st.session_state.user_id, st.session_state.role)
 
-    # 4. 路由分发 (注意去除图标匹配字符串，或者直接用 index 判断)
-    # 如果你在 menu_options 里加了图标，判断时也要带上图标
+    # 6. 路由分发 (使用 'in' 关键字匹配图标文字)
     if "开始评估" in choice:
         start_evaluation(st.session_state.user_id) 
     elif "数据分析" in choice:
@@ -975,10 +977,10 @@ def main():
     elif "系统管理" in choice:
         show_admin_panel() 
 
-    # 5. 退出登录按钮放在最底部
+    # 7. 退出登录
     if st.sidebar.button("🚪 退出登录", use_container_width=True):
         st.session_state.clear()
         st.rerun()
-
+        
 if __name__ == "__main__":
     main()
