@@ -329,7 +329,7 @@ def start_evaluation():
         if past_evals:
             # 获取最近的一条记录
             last_ev = sorted(past_evals, key=lambda x: x['eval_date'], reverse=True)[0]
-            st.warning(f"🔄 已载入对比模式：正在对比该工厂上一次评估 ({last_ev['eval_date']}) 的表现")
+            # st.warning(f"🔄 已载入对比模式：正在对比该工厂上一次评估 ({last_ev['eval_date']}) 的表现")
         else:
             st.info("该工厂暂无历史评估记录，将以常规模式进行。")
 
