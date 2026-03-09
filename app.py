@@ -913,13 +913,13 @@ def show_data_analysis(evals_to_show):
     
 # ==================== 登录界面管理 ====================
 def login():
-    st.set_page_config(page_title="欧图工厂生产流程审核系统", layout="wide")
+    st.set_page_config(page_title="欧图工厂生产流程评估系统", layout="wide")
     
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
 
     if not st.session_state.logged_in:
-        st.title("🔒 质量评估系统登录")
+        st.title("🔒 欧图工厂生产流程评估系统登录")
         user_input = st.text_input("账号 (Email)")
         pwd_input = st.text_input("密码", type="password")
         
